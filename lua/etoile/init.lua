@@ -1,0 +1,565 @@
+local config = require("etoile.config")
+local editor = require("etoile.editor")
+local layout = require("etoile.layout")
+local path = require("etoile.path")
+local preview = require("etoile.preview")
+local renderer = require("etoile.renderer")
+local scanner = require("etoile.scanner")
+
+local M = {}
+
+local function valid_win(win)
+	return win and vim.api.nvim_win_is_valid(win)
+end
+
+local function resolve_root(input)
+	if input and input ~= "" then
+		return path.normalize(vim.fn.fnamemodify(input, ":p"))
+	end
+
+	local current = vim.api.nvim_buf_get_name(0)
+	local start = current ~= "" and current or vim.fn.getcwd()
+	local root = vim.fs.root(start, { ".git" })
+	return path.normalize(root or vim.fn.getcwd())
+end
+
+local function expand_to_current(state)
+	local current = vim.api.nvim_buf_get_name(0)
+	if current == "" then
+		return
+	end
+
+	current = path.normalize(current)
+	if current ~= state.root and not path.is_ancestor(state.root, current) then
+		return
+	end
+
+	local dir = path.dirname(current)
+	while dir and dir ~= state.root and path.is_ancestor(state.root, dir) do
+		state.expanded[dir] = true
+		dir = path.dirname(dir)
+	end
+	state.expanded[state.root] = true
+	state.focus_path = current
+end
+
+local function source_win_col(state)
+	local opts = config.options.float
+	if opts.position ~= "source_window" or not valid_win(state.source_win) then
+		return opts.col
+	end
+
+	local ok, position = pcall(vim.api.nvim_win_get_position, state.source_win)
+	if not ok or not position then
+		return opts.col
+	end
+
+	return (position[2] or 0) + opts.col
+end
+
+local function preview_reserved_width()
+	local float_opts = config.options.float
+	if not float_opts.reserve_preview_width then
+		return 0
+	end
+
+	local preview_opts = config.options.preview
+	return 2 + (preview_opts.max_width or 0)
+end
+
+local function float_config(state)
+	local opts = config.options.float
+	local width = layout.clamp(
+		state.rendered.max_width + opts.width_padding + (opts.icon_width_padding or 0) + (opts.right_padding or 0),
+		opts.min_width,
+		math.min(opts.max_width, vim.o.columns - 4)
+	)
+	local height = layout.resolve_height(opts, vim.o.lines, math.max(1, vim.o.lines - 4))
+	local row = opts.row or layout.resolve_row(height, vim.o.lines)
+	local col = layout.resolve_col(source_win_col(state), width, vim.o.columns, 2 + preview_reserved_width())
+	return {
+		relative = "editor",
+		row = row,
+		col = col,
+		width = width,
+		height = height,
+		border = opts.border,
+		title = " Etoile - " .. path.basename(state.root) .. " ",
+		title_pos = "left",
+	}
+end
+
+local function entry_at_cursor(state)
+	local line = vim.api.nvim_win_get_cursor(state.win)[1]
+	return renderer.entry_at_line(state.buf, line, state.entries_by_id or {}, state.mark_ids or {})
+end
+
+local function set_cursor_to_path(state, target)
+	if not target then
+		return
+	end
+	for index, entry in ipairs(state.rendered.entries) do
+		if path.normalize(entry.path) == path.normalize(target) then
+			vim.api.nvim_win_set_cursor(state.win, { index, 0 })
+			return
+		end
+	end
+end
+
+local function refresh(state)
+	state.rendered = renderer.render(state.root, state.expanded, { exclude = config.options.search.exclude })
+	state.snapshot = editor.snapshot(state.rendered.entries)
+	state.entries_by_id = renderer.entries_by_id(state.rendered.entries)
+	vim.api.nvim_set_option_value("modifiable", true, { buf = state.buf })
+	state.sync_suspended = true
+	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
+	state.mark_ids = renderer.decorate(state.buf, state.rendered.entries, state.search)
+	state.sync_suspended = false
+	vim.api.nvim_set_option_value("modified", false, { buf = state.buf })
+
+	if valid_win(state.win) then
+		vim.api.nvim_win_set_config(state.win, float_config(state))
+		vim.wo[state.win].number = true
+		vim.wo[state.win].relativenumber = false
+		set_cursor_to_path(state, state.focus_path)
+	end
+end
+
+local function refresh_without_undo(state)
+	local undolevels = vim.api.nvim_get_option_value("undolevels", { scope = "global" })
+	vim.api.nvim_set_option_value("undolevels", -1, { buf = state.buf })
+	local ok, err = pcall(refresh, state)
+	vim.api.nvim_set_option_value("undolevels", undolevels, { buf = state.buf })
+	if not ok then
+		error(err)
+	end
+end
+
+local function refresh_git_status(state)
+	if not state.rendered then
+		return
+	end
+	renderer.refresh_git_status(state.root, state.rendered)
+	renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+	if valid_win(state.win) then
+		vim.api.nvim_win_set_config(state.win, float_config(state))
+	end
+end
+
+local function reveal_path(state, target)
+	local dir = path.dirname(target)
+	while dir and dir ~= state.root and path.is_ancestor(state.root, dir) do
+		state.expanded[dir] = true
+		dir = path.dirname(dir)
+	end
+	state.focus_path = target
+	refresh(state)
+end
+
+local function expand_search_matches(state)
+	for _, target in ipairs(state.search_matches or {}) do
+		local dir = path.dirname(target)
+		while dir and dir ~= state.root and path.is_ancestor(state.root, dir) do
+			state.expanded[dir] = true
+			dir = path.dirname(dir)
+		end
+	end
+end
+
+local function search_terms(query)
+	local terms = {}
+	for term in query:lower():gmatch("%S+") do
+		term = term:gsub("/+$", "")
+		if term ~= "" then
+			table.insert(terms, term)
+		end
+	end
+	return terms
+end
+
+local function last_path_component(value)
+	return value:match("([^/]+)$") or value
+end
+
+local function rel_matches_terms(rel, terms)
+	for _, term in ipairs(terms) do
+		if not rel:find(term, 1, true) then
+			return false
+		end
+	end
+	return true
+end
+
+local function entry_matches_search(entry, root, terms)
+	local rel = path.relative(entry.path, root):lower()
+	if not rel_matches_terms(rel, terms) then
+		return false
+	end
+
+	if entry.type ~= "directory" then
+		return true
+	end
+
+	local last_term = last_path_component(terms[#terms])
+	return entry.name:lower():find(last_term, 1, true) ~= nil
+end
+
+local function collect_search_matches(root, terms)
+	local matches = {}
+
+	local function visit(dir)
+		for _, entry in ipairs(scanner.list_dir(dir, { root = root, exclude = config.options.search.exclude })) do
+			if entry_matches_search(entry, root, terms) then
+				table.insert(matches, entry.path)
+			elseif entry.type == "directory" and not entry.symlink then
+				visit(entry.path)
+			end
+		end
+	end
+
+	visit(root)
+	return matches
+end
+
+local function update_search_state(state)
+	local matches_by_path = {}
+	local match_index_by_path = {}
+	for index, match in ipairs(state.search_matches or {}) do
+		matches_by_path[match] = true
+		match_index_by_path[match] = index
+	end
+	state.search = {
+		matches_by_path = matches_by_path,
+		match_index_by_path = match_index_by_path,
+		total = #(state.search_matches or {}),
+		current_path = state.search_matches and state.search_matches[state.search_index],
+	}
+end
+
+local function open_entry(state)
+	local entry = entry_at_cursor(state)
+	if not entry then
+		return
+	end
+
+	if entry.type == "directory" then
+		state.expanded[entry.path] = not state.expanded[entry.path]
+		state.focus_path = entry.path
+		refresh(state)
+		return
+	end
+
+	local source = state.source_win
+	if valid_win(state.win) then
+		vim.api.nvim_win_close(state.win, true)
+	end
+	preview.close(state)
+	if valid_win(source) then
+		vim.api.nvim_set_current_win(source)
+	end
+	vim.cmd.edit(vim.fn.fnameescape(entry.path))
+end
+
+local function sync_open_preview(state)
+	if not preview.is_open(state) then
+		return
+	end
+
+	local entry = entry_at_cursor(state)
+	if entry and (entry.type == "file" or entry.type == "directory") then
+		preview.sync(state, entry.path, entry.type)
+	else
+		preview.sync(state, state.root, "directory")
+	end
+end
+
+local function parent_root(state)
+	local previous_root = state.root
+	state.root = path.dirname(state.root)
+	state.expanded = {}
+	state.focus_path = previous_root
+	refresh(state)
+	sync_open_preview(state)
+end
+
+local function child_root(state)
+	local entry = entry_at_cursor(state)
+	if not entry or entry.type ~= "directory" then
+		return
+	end
+	state.root = entry.path
+	state.expanded = {}
+	state.focus_path = nil
+	refresh(state)
+	sync_open_preview(state)
+end
+
+local function save_changes(state)
+	local lines = renderer.lines_with_ids(state.buf, state.mark_ids)
+	local ops = editor.diff(state.root, state.snapshot, lines)
+	local ok, err = editor.apply(ops, { confirm_delete = config.options.confirm.delete, root = state.root })
+	if not ok then
+		vim.notify(err or "Failed to apply etoile changes", vim.log.levels.WARN)
+	end
+	if #ops > 0 and err ~= "Delete canceled" then
+		refresh_without_undo(state)
+	else
+		refresh(state)
+	end
+end
+
+local function search(state)
+	local query = vim.fn.input("Etoile search: ")
+	if query == "" then
+		return
+	end
+
+	local terms = search_terms(query)
+	if #terms == 0 then
+		return
+	end
+
+	state.search_matches = {}
+	state.search_index = 0
+	state.search = nil
+	state.search_matches = collect_search_matches(state.root, terms)
+
+	if #state.search_matches == 0 then
+		vim.notify("No etoile search results: " .. query, vim.log.levels.INFO)
+		renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+		return
+	end
+
+	state.search_index = 1
+	update_search_state(state)
+	if config.options.search.expand_matches then
+		expand_search_matches(state)
+	end
+	reveal_path(state, state.search_matches[state.search_index])
+end
+
+local function search_clear(state)
+	if not state.search or not state.search_matches or #state.search_matches == 0 then
+		return
+	end
+
+	state.search_matches = {}
+	state.search_index = 0
+	state.search = nil
+	renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+end
+
+local function search_move(state, delta)
+	if not state.search_matches or #state.search_matches == 0 then
+		return
+	end
+	state.search_index = ((state.search_index - 1 + delta) % #state.search_matches) + 1
+	update_search_state(state)
+	reveal_path(state, state.search_matches[state.search_index])
+end
+
+local function open_preview(state)
+	local entry = entry_at_cursor(state)
+	if not entry or (entry.type ~= "file" and entry.type ~= "directory") then
+		return
+	end
+	preview.open(state, entry.path, entry.type)
+end
+
+local function toggle_preview(state)
+	if preview.is_open(state) then
+		preview.close(state)
+	else
+		open_preview(state)
+	end
+end
+
+local function sync_preview(state)
+	if not preview.is_open(state) then
+		return
+	end
+
+	local entry = entry_at_cursor(state)
+	if not entry or (entry.type ~= "file" and entry.type ~= "directory") then
+		return
+	end
+	preview.sync(state, entry.path, entry.type)
+end
+
+local function map(buf, lhs, rhs, desc)
+	vim.keymap.set("n", lhs, rhs, { buffer = buf, silent = true, desc = desc })
+end
+
+local function jump_within_main(state, lhs)
+	local cursor = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win) or nil
+	local keys = vim.api.nvim_replace_termcodes(lhs, true, false, true)
+	vim.api.nvim_feedkeys(keys, "nx", false)
+
+	vim.schedule(function()
+		if not valid_win(state.win) or vim.api.nvim_win_get_buf(state.win) == state.buf then
+			return
+		end
+
+		vim.api.nvim_win_set_buf(state.win, state.buf)
+		if cursor then
+			pcall(vim.api.nvim_win_set_cursor, state.win, cursor)
+		end
+	end)
+end
+
+local function sync_decorations(state)
+	if state.sync_suspended then
+		return
+	end
+	renderer.sync_decorations(state.buf, state.entries_by_id or {}, state.mark_ids or {}, state.search, state.yanked)
+	state.yanked = nil
+	sync_preview(state)
+end
+
+local function capture_yank(state)
+	local event = vim.v.event or {}
+	if event.operator ~= "y" or not event.regcontents then
+		return
+	end
+
+	local start_line = vim.fn.getpos("'[")[2]
+	local end_line = vim.fn.getpos("']")[2]
+	if start_line <= 0 or end_line < start_line then
+		return
+	end
+
+	local ids_by_line = renderer.ids_by_line(state.buf, state.mark_ids or {})
+	local yanked = {}
+	for line = start_line, end_line do
+		local id = ids_by_line[line]
+		if id then
+			table.insert(yanked, {
+				id = id,
+				line = event.regcontents[line - start_line + 1],
+			})
+		end
+	end
+	state.yanked = #yanked > 0 and yanked or nil
+end
+
+local function setup_buffer(state)
+	vim.api.nvim_set_option_value("buftype", "acwrite", { buf = state.buf })
+	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
+	vim.api.nvim_set_option_value("swapfile", false, { buf = state.buf })
+	pcall(vim.api.nvim_buf_set_name, state.buf, "etoile://" .. state.root)
+
+	local keys = config.options.keymaps
+	map(state.buf, "<C-o>", function()
+		jump_within_main(state, "<C-o>")
+	end, "Jump back within etoile")
+	map(state.buf, "<C-i>", function()
+		jump_within_main(state, "<C-i>")
+	end, "Jump forward within etoile")
+	map(state.buf, keys.open, function()
+		open_entry(state)
+	end, "Open etoile entry")
+	map(state.buf, keys.parent, function()
+		parent_root(state)
+	end, "Move etoile root to parent")
+	map(state.buf, keys.child, function()
+		child_root(state)
+	end, "Move etoile root to child")
+	map(state.buf, keys.preview, function()
+		toggle_preview(state)
+	end, "Toggle etoile preview")
+	map(state.buf, keys.focus_preview, function()
+		preview.focus_toggle(state)
+	end, "Focus etoile preview")
+	map(state.buf, keys.search, function()
+		search(state)
+	end, "Search etoile tree")
+	map(state.buf, keys.search_next, function()
+		search_move(state, 1)
+	end, "Next etoile search result")
+	map(state.buf, keys.search_prev, function()
+		search_move(state, -1)
+	end, "Previous etoile search result")
+	map(state.buf, keys.search_clear, function()
+		search_clear(state)
+	end, "Clear etoile search highlights")
+	map(state.buf, keys.close, function()
+		preview.close(state)
+		if valid_win(state.win) then
+			vim.api.nvim_win_close(state.win, true)
+		end
+	end, "Close etoile")
+
+	vim.api.nvim_create_autocmd("BufWriteCmd", {
+		buffer = state.buf,
+		callback = function()
+			save_changes(state)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd({ "TextChanged", "TextChangedI" }, {
+		buffer = state.buf,
+		callback = function()
+			sync_decorations(state)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("CursorMoved", {
+		buffer = state.buf,
+		callback = function()
+			sync_preview(state)
+		end,
+	})
+
+	vim.api.nvim_create_autocmd("TextYankPost", {
+		buffer = state.buf,
+		callback = function()
+			capture_yank(state)
+		end,
+	})
+end
+
+function M.setup(opts)
+	config.setup(opts)
+end
+
+function M.open(opts)
+	opts = opts or {}
+	local state = {
+		root = resolve_root(opts.path),
+		expanded = {},
+		source_win = vim.api.nvim_get_current_win(),
+		search_matches = {},
+		search_index = 0,
+		search = nil,
+	}
+	state.resize_main = function()
+		if valid_win(state.win) then
+			vim.api.nvim_win_set_config(state.win, float_config(state))
+		end
+	end
+	state.refresh_git_status = function()
+		if config.options.git_status.sync_on_preview_write then
+			refresh_git_status(state)
+		end
+	end
+
+	expand_to_current(state)
+	state.rendered = renderer.render(state.root, state.expanded, { exclude = config.options.search.exclude })
+	state.snapshot = editor.snapshot(state.rendered.entries)
+	state.entries_by_id = renderer.entries_by_id(state.rendered.entries)
+	state.buf = vim.api.nvim_create_buf(false, true)
+	setup_buffer(state)
+	state.sync_suspended = true
+	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
+	state.mark_ids = renderer.decorate(state.buf, state.rendered.entries, state.search)
+	state.sync_suspended = false
+	state.win = vim.api.nvim_open_win(state.buf, true, float_config(state))
+	vim.wo[state.win].number = true
+	vim.wo[state.win].relativenumber = false
+	set_cursor_to_path(state, state.focus_path)
+	if config.options.preview.enabled then
+		open_preview(state)
+	end
+end
+
+return M
