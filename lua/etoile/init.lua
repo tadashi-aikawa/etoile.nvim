@@ -363,6 +363,10 @@ local function open_preview(state)
 	if not entry or (entry.type ~= "file" and entry.type ~= "directory") then
 		return
 	end
+	if entry.searchable == false then
+		preview.clear(state, entry.name)
+		return
+	end
 	preview.open(state, entry.path, entry.type)
 end
 
@@ -380,7 +384,15 @@ local function sync_preview(state)
 	end
 
 	local entry = entry_at_cursor(state)
-	if not entry or (entry.type ~= "file" and entry.type ~= "directory") then
+	if not entry then
+		preview.clear(state, "")
+		return
+	end
+	if entry.type ~= "file" and entry.type ~= "directory" then
+		return
+	end
+	if entry.searchable == false then
+		preview.clear(state, entry.name)
 		return
 	end
 	preview.sync(state, entry.path, entry.type)

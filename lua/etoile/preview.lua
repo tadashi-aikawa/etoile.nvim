@@ -52,6 +52,20 @@ local function is_image_path(file_path)
 	return image and image.supports_file(file_path)
 end
 
+local function file_exists(file_path)
+	local stat = vim.uv.fs_stat(file_path)
+	return stat and stat.type ~= "directory"
+end
+
+local function prepare_empty_preview_buffer()
+	local buf = vim.api.nvim_create_buf(false, true)
+	vim.bo[buf].buftype = "nofile"
+	vim.bo[buf].bufhidden = "wipe"
+	vim.bo[buf].buflisted = false
+	vim.bo[buf].modifiable = false
+	return buf
+end
+
 local function cleanup_preview_buffer(state)
 	if state.preview_buf_is_scratch and state.preview_buf and vim.api.nvim_buf_is_valid(state.preview_buf) then
 		pcall(vim.api.nvim_buf_delete, state.preview_buf, { force = true })
@@ -136,6 +150,10 @@ end
 local function prepare_preview_buffer(file_path, entry_type)
 	if entry_type == "directory" then
 		return prepare_directory_preview_buffer(file_path)
+	end
+
+	if not file_exists(file_path) then
+		return prepare_empty_preview_buffer(), true
 	end
 
 	local image = snacks_image()
@@ -267,6 +285,12 @@ local function apply_preview_options(state, file_path, entry_type)
 	end
 end
 
+local function apply_empty_preview_options(state)
+	vim.wo[state.preview_win].number = false
+	vim.wo[state.preview_win].relativenumber = false
+	vim.wo[state.preview_win].wrap = false
+end
+
 local function apply_preview_buffer(state, file_path, entry_type)
 	local previous_buf = state.preview_buf
 	local previous_buf_is_scratch = state.preview_buf_is_scratch
@@ -286,6 +310,26 @@ local function apply_preview_buffer(state, file_path, entry_type)
 	end
 
 	return true
+end
+
+local function apply_empty_preview_buffer(state, title)
+	local previous_buf = state.preview_buf
+	local previous_buf_is_scratch = state.preview_buf_is_scratch
+	local buf = prepare_empty_preview_buffer()
+	vim.api.nvim_win_set_buf(state.preview_win, buf)
+	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win, title or ""))
+	apply_empty_preview_options(state)
+	state.preview_buf = buf
+	state.preview_buf_is_scratch = true
+	state.preview_path = nil
+	state.preview_type = nil
+	unmap_preview_keys(state)
+	clear_preview_write_sync(state)
+	map_preview_keys(state, buf)
+
+	if previous_buf_is_scratch and previous_buf and vim.api.nvim_buf_is_valid(previous_buf) then
+		pcall(vim.api.nvim_buf_delete, previous_buf, { force = true })
+	end
 end
 
 local function resize_preview(state, file_path)
@@ -344,10 +388,25 @@ function M.sync(state, file_path, entry_type)
 		return
 	end
 	if state.preview_path == file_path and state.preview_type == entry_type then
+		if
+			entry_type == "file"
+			and state.preview_buf_is_scratch
+			and file_exists(file_path)
+			and not is_image_path(file_path)
+		then
+			M.open(state, file_path, entry_type)
+			return
+		end
 		resize_preview(state, file_path)
 		return
 	end
 	M.open(state, file_path, entry_type)
+end
+
+function M.clear(state, title)
+	if M.is_open(state) then
+		apply_empty_preview_buffer(state, title)
+	end
 end
 
 function M.focus_toggle(state)

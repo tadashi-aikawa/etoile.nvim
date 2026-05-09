@@ -1,8 +1,11 @@
 local buffers
+local added_buffers
+local loaded_buffers
 local scandir_by_dir
 local stat_by_path
 local win_configs
 local set_win_configs
+local set_win_bufs
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -17,6 +20,8 @@ end
 
 local function reset_vim()
 	buffers = {}
+	added_buffers = {}
+	loaded_buffers = {}
 	scandir_by_dir = {}
 	stat_by_path = {}
 	win_configs = {
@@ -27,6 +32,7 @@ local function reset_vim()
 		},
 	}
 	set_win_configs = {}
+	set_win_bufs = {}
 
 	_G.vim = {
 		o = {
@@ -41,10 +47,13 @@ local function reset_vim()
 			end,
 		}),
 		fn = {
-			bufadd = function()
+			bufadd = function(path)
+				table.insert(added_buffers, path)
 				return 99
 			end,
-			bufload = function() end,
+			bufload = function(buf)
+				table.insert(loaded_buffers, buf)
+			end,
 			fnamemodify = function(path)
 				return path:match("([^/]+)$") or path
 			end,
@@ -107,6 +116,9 @@ local function reset_vim()
 				}
 				return id
 			end,
+			nvim_create_augroup = function(name)
+				return name
+			end,
 			nvim_buf_set_lines = function(buf, start, finish, _, replacement)
 				local lines = buffers[buf].lines
 				local last = finish == -1 and #lines or finish
@@ -125,8 +137,17 @@ local function reset_vim()
 					opts = deepcopy(opts),
 				})
 			end,
+			nvim_buf_is_valid = function()
+				return true
+			end,
+			nvim_buf_delete = function(buf)
+				buffers[buf] = nil
+			end,
 			nvim_win_get_config = function(win)
 				return win_configs[win]
+			end,
+			nvim_win_set_buf = function(win, buf)
+				table.insert(set_win_bufs, { win = win, buf = buf })
 			end,
 			nvim_win_set_config = function(win, opts)
 				win_configs[win] = deepcopy(opts)
@@ -245,5 +266,64 @@ describe("etoile.preview", function()
 		assert.are.equal(1, #set_win_configs)
 		assert.are.equal(53, set_win_configs[1].opts.col)
 		assert.are.equal(52, set_win_configs[1].opts.width)
+	end)
+
+	it("does not create a normal file buffer for a missing file preview", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+
+		preview.open({ win = 1, buf = 1 }, "/tmp/project/new.lua", "file")
+
+		assert.are.same({}, added_buffers)
+		assert.are.same({}, loaded_buffers)
+		assert.are.equal("nofile", vim.bo[1].buftype)
+	end)
+
+	it("reloads a missing file scratch preview after the file appears", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/new.lua", "file")
+		stat_by_path["/tmp/project/new.lua"] = { type = "file" }
+		preview.sync(state, "/tmp/project/new.lua", "file")
+
+		assert.are.same({ "/tmp/project/new.lua" }, added_buffers)
+		assert.are.same({ 99 }, loaded_buffers)
+		assert.are.equal(99, state.preview_buf)
+		assert.is_false(state.preview_buf_is_scratch)
+	end)
+
+	it("clears an existing preview for a new unsaved entry", function()
+		add_entry("/tmp/project", "src", "directory")
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project", "directory")
+		local previous_buf = state.preview_buf
+		preview.clear(state, "new.lua")
+
+		assert.are.same({}, buffers[state.preview_buf].lines)
+		assert.are.same({ { win = 1, buf = state.preview_buf } }, set_win_bufs)
+		assert.are.equal(" new.lua ", win_configs[1].title)
+		assert.is_nil(buffers[previous_buf])
+	end)
+
+	it("clears an existing preview without keeping the previous title", function()
+		add_entry("/tmp/project", "src", "directory")
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project", "directory")
+		preview.clear(state, "")
+
+		assert.are.same({}, buffers[state.preview_buf].lines)
+		assert.are.equal("  ", win_configs[1].title)
 	end)
 end)
