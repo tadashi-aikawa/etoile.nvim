@@ -229,11 +229,14 @@ end
 function M.filter_redundant_ops(ops)
 	local moves = {}
 	local copies = {}
+	local delete_dirs = {}
 	for _, op in ipairs(ops) do
 		if op.type == "move" then
 			table.insert(moves, op)
 		elseif op.type == "copy" then
 			table.insert(copies, op)
+		elseif op.type == "delete" and op.entry_type == "directory" then
+			table.insert(delete_dirs, op)
 		end
 	end
 
@@ -277,6 +280,14 @@ function M.filter_redundant_ops(ops)
 					and path.is_ancestor(parent.from, op.from)
 					and path.is_ancestor(parent.to, op.to)
 				then
+					redundant = true
+					break
+				end
+			end
+		end
+		if op.type == "delete" then
+			for _, parent in ipairs(delete_dirs) do
+				if parent ~= op and path.is_ancestor(parent.path, op.path) then
 					redundant = true
 					break
 				end
@@ -351,11 +362,72 @@ local function setup_delete_confirm_highlights()
 	vim.api.nvim_set_hl(0, "EtoileDeleteConfirmButton", { fg = "#ffffff", bg = "#8b1a1a", bold = true })
 end
 
+local function pluralize(count, singular, plural)
+	return count .. " " .. (count == 1 and singular or plural)
+end
+
+local function count_directory_entries(dir)
+	if not (vim and vim.fn and vim.fn.readdir and vim.fn.isdirectory) then
+		return nil
+	end
+
+	local files = 0
+	local dirs = 0
+
+	local function visit(current)
+		local ok, items = pcall(vim.fn.readdir, current)
+		if not ok then
+			return false
+		end
+
+		for _, item in ipairs(items) do
+			local child = path.join(current, item)
+			if vim.fn.isdirectory(child) == 1 then
+				dirs = dirs + 1
+				if not visit(child) then
+					return false
+				end
+			else
+				files = files + 1
+			end
+		end
+
+		return true
+	end
+
+	if not visit(dir) then
+		return nil
+	end
+
+	return files, dirs
+end
+
+local function delete_display_path(op, root)
+	local display_path = root and path.relative(op.path, root) or op.path
+	if op.entry_type == "directory" and display_path:sub(-1) ~= "/" then
+		display_path = display_path .. "/"
+	end
+
+	local files, dirs = nil, nil
+	if op.entry_type == "directory" then
+		files, dirs = count_directory_entries(op.path)
+	end
+	if files and dirs then
+		return display_path
+			.. " ("
+			.. pluralize(files, "file", "files")
+			.. ", "
+			.. pluralize(dirs, "dir", "dirs")
+			.. ")"
+	end
+
+	return display_path
+end
+
 local function delete_confirm_lines(deletes, root)
 	local lines = { "Delete " .. #deletes .. " item(s)?", "" }
-	for _, delete_path in ipairs(deletes) do
-		local display_path = root and path.relative(delete_path, root) or delete_path
-		table.insert(lines, "- " .. display_path)
+	for _, op in ipairs(deletes) do
+		table.insert(lines, "- " .. delete_display_path(op, root))
 	end
 	table.insert(lines, "")
 	table.insert(lines, "[y] Delete    [Enter/n] Cancel")
@@ -433,7 +505,7 @@ function M.apply(ops, opts)
 	local deletes = {}
 	for _, op in ipairs(ops) do
 		if op.type == "delete" then
-			table.insert(deletes, op.path)
+			table.insert(deletes, op)
 		end
 	end
 

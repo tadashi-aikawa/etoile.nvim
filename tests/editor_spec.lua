@@ -138,7 +138,65 @@ describe("etoile.editor", function()
 			"Delete 2 item(s)?",
 			"",
 			"- remove.lua",
-			"- src/old",
+			"- src/old/",
+			"",
+			"[y] Delete    [Enter/n] Cancel",
+		}, confirmed_lines)
+	end)
+
+	it("omits child deletes when a deleted directory already covers them", function()
+		local ops = editor.diff(
+			"/tmp/project",
+			snapshot({
+				{ path = "/tmp/project/images2-copy", name = "images2-copy", type = "directory" },
+				{ path = "/tmp/project/images2-copy/minerva.png", name = "minerva.png", type = "file" },
+				{ path = "/tmp/project/images2-copy/obsidia.png", name = "obsidia.png", type = "file" },
+			}),
+			{}
+		)
+
+		assert.are.same({
+			{ type = "delete", path = "/tmp/project/images2-copy", entry_type = "directory" },
+		}, ops)
+	end)
+
+	it("shows recursive file and directory counts for deleted directories in the confirmation", function()
+		local original_fn = vim.fn
+		vim.fn = {
+			isdirectory = function(target)
+				return ({
+					["/tmp/project/images2-copy/minerva.png"] = 0,
+					["/tmp/project/images2-copy/nested"] = 1,
+					["/tmp/project/images2-copy/nested/obsidia.png"] = 0,
+				})[target] or 0
+			end,
+			readdir = function(target)
+				return ({
+					["/tmp/project/images2-copy"] = { "minerva.png", "nested" },
+					["/tmp/project/images2-copy/nested"] = { "obsidia.png" },
+				})[target] or {}
+			end,
+		}
+
+		local confirmed_lines
+		local ok, err = editor.apply({
+			{ type = "delete", path = "/tmp/project/images2-copy", entry_type = "directory" },
+		}, {
+			confirm_delete = true,
+			root = "/tmp/project",
+			confirm_delete_fn = function(lines)
+				confirmed_lines = lines
+				return false
+			end,
+		})
+		vim.fn = original_fn
+
+		assert.is_false(ok)
+		assert.are.same("Delete canceled", err)
+		assert.are.same({
+			"Delete 1 item(s)?",
+			"",
+			"- images2-copy/ (2 files, 1 dir)",
 			"",
 			"[y] Delete    [Enter/n] Cancel",
 		}, confirmed_lines)
