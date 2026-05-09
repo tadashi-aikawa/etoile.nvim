@@ -1,15 +1,15 @@
 <div align="center">
-    <h1>etoile.nvim</h1>
+    <img src="./etoile.webp" width="384" />
     <p>
-    <h3>Etoile</h3>
     <div>A floating, editable file tree for Neovim.</div>
     </p>
     <p>
         English | <a href="./README.ja.md">日本語</a>
     </p>
     <p>
-        TODO: Add logo after the project logo is ready.<br />
-        TODO: Add CI and license badges after the GitHub repository and workflows are ready.
+        <a href="https://github.com/tadashi-aikawa/etoile/blob/main/LICENSE">
+          <img src="https://img.shields.io/github/license/tadashi-aikawa/etoile.nvim" alt="License" />
+        </a>
     </p>
 </div>
 

@@ -1,15 +1,15 @@
 <div align="center">
-    <h1>etoile.nvim</h1>
+    <img src="./etoile.webp" width="384" />
     <p>
-    <h3>Etoile</h3>
     <div>Neovim のための、編集可能なフローティングファイルツリー</div>
     </p>
     <p>
         <a href="./README.md">English</a> | 日本語
     </p>
     <p>
-        TODO: プロジェクトロゴが準備できたら追加する。<br />
-        TODO: GitHub リポジトリと workflow が準備できたら CI / License badge を追加する。
+        <a href="https://github.com/tadashi-aikawa/etoile/blob/main/LICENSE">
+          <img src="https://img.shields.io/github/license/tadashi-aikawa/etoile.nvim" alt="License" />
+        </a>
     </p>
 </div>
 
