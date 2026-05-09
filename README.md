@@ -326,5 +326,3 @@ Etoile is inspired by the following projects:
 ## License
 
 MIT
-
-TODO: Add a `LICENSE` file before publishing the GitHub repository.
