@@ -435,6 +435,48 @@ local function collect_invalid_line_ids(buf, entries_by_id, mark_ids, parsed)
 	return released_ids
 end
 
+local function has_matching_entry_line(parsed, entry, current_line)
+	if not entry then
+		return false
+	end
+
+	for _, item in ipairs(parsed) do
+		if
+			item.line ~= current_line
+			and item.name == entry.name
+			and (entry.depth == nil or entry.depth == item.depth)
+		then
+			return true
+		end
+	end
+	return false
+end
+
+local function matching_yanked_index(yanked, yank_index, item, entry_id)
+	if not yanked then
+		return nil
+	end
+
+	for index = yank_index, #yanked do
+		local yanked_item = yanked[index]
+		if yanked_item.line == item.raw or yanked_item.id == entry_id then
+			return index
+		end
+	end
+	return nil
+end
+
+local function yanked_depth(yanked_item)
+	local parsed = parse_line(yanked_item.line)
+	return parsed and parsed.depth or nil
+end
+
+local function yanked_has_children(yanked, index)
+	local depth = yanked_depth(yanked[index])
+	local next_depth = yanked[index + 1] and yanked_depth(yanked[index + 1]) or nil
+	return depth and next_depth and next_depth > depth
+end
+
 function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, current_line)
 	local marks_by_line = M.ids_by_line(buf, mark_ids)
 	local parsed = parsed_lines(buf)
@@ -454,16 +496,47 @@ function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, curren
 		local used_yank = false
 		local yanked_entry_id = nil
 
-		if yanked and yanked[yank_index] and yanked[yank_index].line == item.raw and not matches_current_line then
-			entry_id = yanked[yank_index].id
-			entry = entries_by_id[entry_id]
-			matches_current_line = entry
-				and entry.name == item.name
-				and (entry.depth == nil or entry.depth == item.depth)
-			yank_index = yank_index + 1
+		if
+			entry
+			and item.type == "directory"
+			and not matches_current_line
+			and has_matching_entry_line(parsed, entry, item.line)
+		then
+			released_ids[entry_id] = true
+			entry_id = nil
+			original_entry_id = nil
+			entry = nil
+			matches_current_line = false
+		end
+
+		local matched_yanked_index = not matches_current_line
+				and matching_yanked_index(yanked, yank_index, item, entry_id)
+			or nil
+		local yanked_item = matched_yanked_index and yanked[matched_yanked_index] or nil
+		if yanked_item then
+			local yanked_entry = entries_by_id[yanked_item.id]
+			local skip_expanded_parent = yanked_has_children(yanked, matched_yanked_index)
+				and yanked_entry
+				and yanked_entry.type == "directory"
+				and yanked_item.line ~= item.raw
+			if skip_expanded_parent then
+				entry_id = nil
+				entry = nil
+				matches_current_line = false
+			else
+				entry_id = yanked_item.id
+				entry = entries_by_id[entry_id]
+				matches_current_line = entry
+					and entry.name == item.name
+					and (entry.depth == nil or entry.depth == item.depth)
+			end
+			yank_index = matched_yanked_index + 1
 			used_yank = true
 			yanked_entry_id = entry_id
-			if original_entry_id and original_entry_id ~= entry_id then
+			if original_entry_id and original_entry_id ~= yanked_item.id then
+				released_ids[original_entry_id] = true
+			end
+			if original_entry_id and skip_expanded_parent then
 				released_ids[original_entry_id] = true
 			end
 		end

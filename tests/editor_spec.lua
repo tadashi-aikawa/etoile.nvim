@@ -351,6 +351,41 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("creates a renamed pasted expanded directory without moving the source directory", function()
+		local entries = {
+			{ path = "/tmp/project/images2", name = "images2", type = "directory" },
+			{ path = "/tmp/project/images2/macky.png", name = "macky.png", type = "file" },
+			{ path = "/tmp/project/images2/minerva.png", name = "minerva.png", type = "file" },
+			{ path = "/tmp/project/images2/obsidia.png", name = "obsidia.png", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "images1", id = nil },
+			{ line = "  macky.png", id = "/tmp/project/images2/macky.png", mark_id = 1 },
+			{ line = "  minerva.png", id = "/tmp/project/images2/minerva.png", mark_id = 2 },
+			{ line = "images2", id = "/tmp/project/images2", mark_id = 3 },
+			{ line = "  macky.png", id = "/tmp/project/images2/macky.png", mark_id = 4 },
+			{ line = "  minerva.png", id = "/tmp/project/images2/minerva.png", mark_id = 5 },
+			{ line = "  obsidia.png", id = "/tmp/project/images2/obsidia.png", mark_id = 6 },
+		})
+
+		assert.are.same({
+			{
+				type = "copy",
+				from = "/tmp/project/images2/macky.png",
+				to = "/tmp/project/images1/macky.png",
+				entry_type = "file",
+			},
+			{
+				type = "copy",
+				from = "/tmp/project/images2/minerva.png",
+				to = "/tmp/project/images1/minerva.png",
+				entry_type = "file",
+			},
+			{ type = "create", path = "/tmp/project/images1", entry_type = "directory" },
+		}, ops)
+	end)
+
 	it("moves the source when only a copied renamed line remains", function()
 		local entries = {
 			{ path = "/tmp/project/base.md", name = "base.md", type = "file" },

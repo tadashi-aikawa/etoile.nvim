@@ -329,6 +329,257 @@ describe("etoile.renderer", function()
 		assert.are.same("/tmp/project/package.json", lines[3].id)
 	end)
 
+	it("keeps yanked child ids when an expanded directory is pasted above the source and renamed", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/dir1",
+				path = "/tmp/project/dir1",
+				name = "dir1",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/images2",
+				path = "/tmp/project/images2",
+				name = "images2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/images2/macky.png",
+				path = "/tmp/project/images2/macky.png",
+				name = "macky.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+			{
+				id = "/tmp/project/images2/minerva.png",
+				path = "/tmp/project/images2/minerva.png",
+				name = "minerva.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+			{
+				id = "/tmp/project/.gitignore",
+				path = "/tmp/project/.gitignore",
+				name = ".gitignore",
+				type = "file",
+				depth = 0,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"dir1",
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+			".gitignore",
+		})
+		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"dir1",
+			"images1",
+			"  macky.png",
+			"  minerva.png",
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+			".gitignore",
+		})
+		for _, mark in ipairs(buffers[1].extmarks) do
+			if mark.ns == "etoile_id" and mark.line == 2 then
+				mark.line = 5
+			elseif mark.ns == "etoile_id" and mark.line == 3 then
+				mark.line = 6
+			elseif mark.ns == "etoile_id" and mark.line == 4 then
+				mark.line = 7
+			end
+		end
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
+			{ id = "/tmp/project/images2", line = "images2" },
+			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
+			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
+		})
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same(nil, lines[2].id)
+		assert.are.same("/tmp/project/images2/macky.png", lines[3].id)
+		assert.are.same("/tmp/project/images2/minerva.png", lines[4].id)
+		assert.are.same("/tmp/project/images2", lines[5].id)
+		assert.are.same("/tmp/project/images2/macky.png", lines[6].id)
+		assert.are.same("/tmp/project/images2/minerva.png", lines[7].id)
+	end)
+
+	it("releases a copied expanded directory id after the pasted parent is renamed", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/images2",
+				path = "/tmp/project/images2",
+				name = "images2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/images2/macky.png",
+				path = "/tmp/project/images2/macky.png",
+				name = "macky.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+			{
+				id = "/tmp/project/images2/minerva.png",
+				path = "/tmp/project/images2/minerva.png",
+				name = "minerva.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+		})
+		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+		})
+		for _, mark in ipairs(buffers[1].extmarks) do
+			if mark.ns == "etoile_id" then
+				mark.line = mark.line + 3
+			end
+		end
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
+			{ id = "/tmp/project/images2", line = "images2" },
+			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
+			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
+		})
+		vim.api.nvim_buf_set_lines(1, 0, 1, false, { "images1" })
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same(nil, lines[1].id)
+		assert.are.same("/tmp/project/images2/macky.png", lines[2].id)
+		assert.are.same("/tmp/project/images2/minerva.png", lines[3].id)
+		assert.are.same("/tmp/project/images2", lines[4].id)
+	end)
+
+	it("keeps a copied collapsed directory id after the pasted line is renamed", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/images2",
+				path = "/tmp/project/images2",
+				name = "images2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "images2" })
+		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"images2",
+			"images2",
+		})
+		for _, mark in ipairs(buffers[1].extmarks) do
+			if mark.ns == "etoile_id" then
+				mark.line = mark.line + 1
+			end
+		end
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
+			{ id = "/tmp/project/images2", line = "images2" },
+		})
+		vim.api.nvim_buf_set_lines(1, 0, 1, false, { "images1" })
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same("/tmp/project/images2", lines[1].id)
+		assert.are.same("/tmp/project/images2", lines[2].id)
+	end)
+
+	it("matches pasted child lines after a renamed copied directory line is skipped", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/images2",
+				path = "/tmp/project/images2",
+				name = "images2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/images2/macky.png",
+				path = "/tmp/project/images2/macky.png",
+				name = "macky.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+			{
+				id = "/tmp/project/images2/minerva.png",
+				path = "/tmp/project/images2/minerva.png",
+				name = "minerva.png",
+				type = "file",
+				depth = 1,
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 2,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
+			"images1",
+			"  macky.png",
+			"  minerva.png",
+			"images2",
+			"  macky.png",
+			"  minerva.png",
+		})
+
+		local mark_ids = {}
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
+			{ id = "/tmp/project/images2", line = "images2" },
+			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
+			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
+		})
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same(nil, lines[1].id)
+		assert.are.same("/tmp/project/images2/macky.png", lines[2].id)
+		assert.are.same("/tmp/project/images2/minerva.png", lines[3].id)
+	end)
+
 	it("repairs ids after opening a line above a directory shifts the directory id to an empty line", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
