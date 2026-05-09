@@ -316,6 +316,13 @@ make format
 
 The underlying commands are `busted`, `stylua --check .`, and `stylua .`.
 
+## Acknowledgements
+
+Etoile is inspired by the following projects:
+
+- [oil.nvim](https://github.com/stevearc/oil.nvim)
+- [fyler.nvim](https://github.com/A7Lavinraj/fyler.nvim)
+
 ## License
 
 MIT

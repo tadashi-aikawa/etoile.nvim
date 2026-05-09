@@ -316,6 +316,13 @@ make format
 
 内部的には `busted`, `stylua --check .`, `stylua .` を実行する。
 
+## 謝辞
+
+Etoile は以下のプロジェクトから影響を受けています:
+
+- [oil.nvim](https://github.com/stevearc/oil.nvim)
+- [fyler.nvim](https://github.com/A7Lavinraj/fyler.nvim)
+
 ## ライセンス
 
 MIT
