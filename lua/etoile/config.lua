@@ -60,6 +60,9 @@ local defaults = {
 	},
 	confirm = {
 		delete = true,
+		move = true,
+		copy = false,
+		create = false,
 	},
 	icons = {
 		link = "",

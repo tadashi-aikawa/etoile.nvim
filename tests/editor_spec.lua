@@ -126,21 +126,220 @@ describe("etoile.editor", function()
 		}, {
 			confirm_delete = true,
 			root = "/tmp/project",
-			confirm_delete_fn = function(lines)
+			confirm_fn = function(lines)
 				confirmed_lines = lines
 				return false
 			end,
 		})
 
 		assert.is_false(ok)
-		assert.are.same("Delete canceled", err)
+		assert.are.same("Apply canceled", err)
 		assert.are.same({
-			"Delete 2 item(s)?",
+			"Apply 2 change(s)?",
 			"",
+			"Delete (2)",
 			"- remove.lua",
 			"- src/old/",
 			"",
-			"[y] Delete    [Enter/n] Cancel",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+	end)
+
+	it("shows moved files and directories as root-relative paths in the confirmation", function()
+		local confirmed_lines
+
+		local ok, err = editor.apply({
+			{ type = "move", from = "/tmp/project/old.lua", to = "/tmp/project/src/new.lua", entry_type = "file" },
+			{ type = "move", from = "/tmp/project/docs", to = "/tmp/project/archive/docs", entry_type = "directory" },
+		}, {
+			confirm_move = true,
+			root = "/tmp/project",
+			confirm_fn = function(lines)
+				confirmed_lines = lines
+				return false
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same({
+			"Apply 2 change(s)?",
+			"",
+			"Move (2)",
+			"- old.lua -> src/new.lua",
+			"- docs/ -> archive/docs/",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+	end)
+
+	it("combines confirmed operation types into a single confirmation", function()
+		local calls = 0
+		local confirmed_lines
+
+		local ok, err = editor.apply({
+			{ type = "delete", path = "/tmp/project/remove.lua", entry_type = "file" },
+			{ type = "move", from = "/tmp/project/old.lua", to = "/tmp/project/new.lua", entry_type = "file" },
+			{ type = "copy", from = "/tmp/project/base.md", to = "/tmp/project/docs/base.md", entry_type = "file" },
+			{ type = "create", path = "/tmp/project/new-dir", entry_type = "directory" },
+		}, {
+			confirm_delete = true,
+			confirm_move = true,
+			confirm_copy = true,
+			confirm_create = true,
+			root = "/tmp/project",
+			confirm_fn = function(lines)
+				calls = calls + 1
+				confirmed_lines = lines
+				return false
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same(1, calls)
+		assert.are.same({
+			"Apply 4 change(s)?",
+			"",
+			"Delete (1)",
+			"- remove.lua",
+			"",
+			"Move (1)",
+			"- old.lua -> new.lua",
+			"",
+			"Copy (1)",
+			"- base.md -> docs/base.md",
+			"",
+			"Create (1)",
+			"- new-dir/",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+	end)
+
+	it("returns a reverted result when the confirmation asks to revert", function()
+		local ok, err = editor.apply({
+			{ type = "move", from = "/tmp/project/old.lua", to = "/tmp/project/new.lua", entry_type = "file" },
+		}, {
+			confirm_move = true,
+			root = "/tmp/project",
+			confirm_fn = function()
+				return "revert"
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply reverted", err)
+	end)
+
+	it("does not confirm copies by default when copy confirmation is disabled", function()
+		local original_fn = vim.fn
+		vim.fn = {
+			isdirectory = function()
+				return 0
+			end,
+			filereadable = function()
+				return 0
+			end,
+			mkdir = function() end,
+			readdir = function()
+				return {}
+			end,
+		}
+
+		local called = false
+		local ok, err = editor.apply({
+			{ type = "copy", from = "/tmp/project/src", to = "/tmp/project/src-copy", entry_type = "directory" },
+		}, {
+			confirm_copy = false,
+			root = "/tmp/project",
+			confirm_fn = function()
+				called = true
+				return false
+			end,
+		})
+		vim.fn = original_fn
+
+		assert.is_true(ok)
+		assert.is_nil(err)
+		assert.is_false(called)
+	end)
+
+	it("shows copied files as root-relative paths in the confirmation when enabled", function()
+		local confirmed_lines
+
+		local ok, err = editor.apply({
+			{ type = "copy", from = "/tmp/project/base.md", to = "/tmp/project/docs/base.md", entry_type = "file" },
+		}, {
+			confirm_copy = true,
+			root = "/tmp/project",
+			confirm_fn = function(lines)
+				confirmed_lines = lines
+				return false
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same({
+			"Apply 1 change(s)?",
+			"",
+			"Copy (1)",
+			"- base.md -> docs/base.md",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+	end)
+
+	it("does not confirm creates by default when create confirmation is disabled", function()
+		local original_fn = vim.fn
+		vim.fn = {
+			mkdir = function() end,
+		}
+
+		local called = false
+		local ok, err = editor.apply({
+			{ type = "create", path = "/tmp/project/new-dir", entry_type = "directory" },
+		}, {
+			confirm_create = false,
+			root = "/tmp/project",
+			confirm_fn = function()
+				called = true
+				return false
+			end,
+		})
+		vim.fn = original_fn
+
+		assert.is_true(ok)
+		assert.is_nil(err)
+		assert.is_false(called)
+	end)
+
+	it("shows created files and directories as root-relative paths in the confirmation when enabled", function()
+		local confirmed_lines
+
+		local ok, err = editor.apply({
+			{ type = "create", path = "/tmp/project/new.lua", entry_type = "file" },
+			{ type = "create", path = "/tmp/project/src", entry_type = "directory" },
+		}, {
+			confirm_create = true,
+			root = "/tmp/project",
+			confirm_fn = function(lines)
+				confirmed_lines = lines
+				return false
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same({
+			"Apply 2 change(s)?",
+			"",
+			"Create (2)",
+			"- new.lua",
+			"- src/",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
 		}, confirmed_lines)
 	end)
 
@@ -184,7 +383,7 @@ describe("etoile.editor", function()
 		}, {
 			confirm_delete = true,
 			root = "/tmp/project",
-			confirm_delete_fn = function(lines)
+			confirm_fn = function(lines)
 				confirmed_lines = lines
 				return false
 			end,
@@ -192,13 +391,14 @@ describe("etoile.editor", function()
 		vim.fn = original_fn
 
 		assert.is_false(ok)
-		assert.are.same("Delete canceled", err)
+		assert.are.same("Apply canceled", err)
 		assert.are.same({
-			"Delete 1 item(s)?",
+			"Apply 1 change(s)?",
 			"",
+			"Delete (1)",
 			"- images2-copy/ (2 files, 1 dir)",
 			"",
-			"[y] Delete    [Enter/n] Cancel",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
 		}, confirmed_lines)
 	end)
 

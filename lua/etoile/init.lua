@@ -297,11 +297,25 @@ end
 local function save_changes(state)
 	local lines = renderer.lines_with_ids(state.buf, state.mark_ids)
 	local ops = editor.diff(state.root, state.snapshot, lines)
-	local ok, err = editor.apply(ops, { confirm_delete = config.options.confirm.delete, root = state.root })
+	local ok, err = editor.apply(ops, {
+		confirm_delete = config.options.confirm.delete,
+		confirm_move = config.options.confirm.move,
+		confirm_copy = config.options.confirm.copy,
+		confirm_create = config.options.confirm.create,
+		root = state.root,
+	})
 	if not ok then
 		vim.notify(err or "Failed to apply etoile changes", vim.log.levels.WARN)
 	end
-	if #ops > 0 and err ~= "Delete canceled" then
+	if err == "Apply canceled" then
+		return
+	end
+	if err == "Apply reverted" then
+		refresh(state)
+		sync_open_preview(state)
+		return
+	end
+	if #ops > 0 then
 		refresh_without_undo(state)
 	else
 		refresh(state)

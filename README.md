@@ -21,7 +21,7 @@
 - **Editable File Operations**
     - Edit the tree buffer and save it to create, move, rename, copy, or delete files and directories.
     - New entries become directories when they have indented children or a trailing slash; otherwise they become files.
-    - Deletes ask for confirmation by default.
+    - Deletes and moves ask for confirmation by default.
 - **Preview**
     - Opens a preview float by default for the entry under the cursor.
     - Supports file previews, directory previews, and optional image previews via [snacks.nvim](https://github.com/folke/snacks.nvim).
@@ -128,7 +128,11 @@ Saving the etoile buffer applies the difference between the original tree and th
 - Add a new line with indented children, or with a trailing `/`, to create a directory.
 - Delete a line to delete the file or directory.
 
-When `confirm.delete = true`, deletes open a confirmation window before files are removed.
+When `confirm.delete = true`, deletes open a confirmation window before files are removed. When
+`confirm.move = true`, moves and renames open a confirmation window showing the before and after paths.
+If multiple confirmed operations are pending, they are shown together in a single confirmation window.
+Canceling the confirmation keeps the edited tree buffer unchanged. Press `r` in the confirmation
+window to revert pending edits.
 
 ### Preview
 
@@ -215,6 +219,9 @@ require("etoile").setup({
   },
   confirm = {
     delete = true,
+    move = true,
+    copy = false,
+    create = false,
   },
   icons = {
     link = "",
@@ -282,7 +289,11 @@ Set `git_status.sync_on_preview_write = false` to stop refreshing the main tree'
 
 ### confirm
 
-`confirm.delete = true` asks before deleting files or directories. Set it to `false` to apply deletes immediately when saving the etoile buffer.
+`confirm.delete = true` asks before deleting files or directories. `confirm.move = true` asks before moving or renaming files or directories and shows the before and after paths.
+
+`confirm.copy = false` and `confirm.create = false` keep copies and creates immediate by default. Set them to `true` to ask before applying those operations.
+
+All enabled confirmations are grouped into one confirmation window when saving. Cancel only closes the confirmation and keeps the edited tree buffer as-is. Revert redraws the tree from the current file system state and discards pending tree edits.
 
 ### icons
 

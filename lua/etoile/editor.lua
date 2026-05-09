@@ -354,12 +354,54 @@ local function display_width(line)
 	return #line
 end
 
-local function setup_delete_confirm_highlights()
-	vim.api.nvim_set_hl(0, "EtoileDeleteConfirm", { fg = "#ffd7d7", bg = "#2a171a" })
-	vim.api.nvim_set_hl(0, "EtoileDeleteConfirmBorder", { fg = "#ff5f5f", bg = "#2a171a" })
-	vim.api.nvim_set_hl(0, "EtoileDeleteConfirmTitle", { fg = "#ffffff", bg = "#8b1a1a", bold = true })
-	vim.api.nvim_set_hl(0, "EtoileDeleteConfirmPath", { fg = "#ffaf5f", bg = "#2a171a" })
-	vim.api.nvim_set_hl(0, "EtoileDeleteConfirmButton", { fg = "#ffffff", bg = "#8b1a1a", bold = true })
+local confirm_palettes = {
+	delete = {
+		normal = { fg = "#ffd7d7", bg = "#2a171a" },
+		border = { fg = "#ff5f5f", bg = "#2a171a" },
+		title = { fg = "#ffffff", bg = "#8b1a1a", bold = true },
+		path = { fg = "#ffaf5f", bg = "#2a171a" },
+		button = { fg = "#ffffff", bg = "#8b1a1a", bold = true },
+	},
+	move = {
+		normal = { fg = "#fff2cc", bg = "#2b2411" },
+		border = { fg = "#d7af00", bg = "#2b2411" },
+		title = { fg = "#1c1600", bg = "#ffdf5f", bold = true },
+		path = { fg = "#ffd75f", bg = "#2b2411" },
+		button = { fg = "#1c1600", bg = "#ffdf5f", bold = true },
+	},
+	copy = {
+		normal = { fg = "#d7ffdf", bg = "#102418" },
+		border = { fg = "#5fd787", bg = "#102418" },
+		title = { fg = "#ffffff", bg = "#23804a", bold = true },
+		path = { fg = "#87d7af", bg = "#102418" },
+		button = { fg = "#ffffff", bg = "#23804a", bold = true },
+	},
+	create = {
+		normal = { fg = "#d7ffdf", bg = "#102418" },
+		border = { fg = "#5fd787", bg = "#102418" },
+		title = { fg = "#ffffff", bg = "#23804a", bold = true },
+		path = { fg = "#87d7af", bg = "#102418" },
+		button = { fg = "#ffffff", bg = "#23804a", bold = true },
+	},
+}
+
+local function confirm_severity(by_type)
+	if #by_type.delete > 0 then
+		return "delete"
+	end
+	if #by_type.move > 0 then
+		return "move"
+	end
+	return "create"
+end
+
+local function setup_confirm_highlights(severity)
+	local palette = confirm_palettes[severity] or confirm_palettes.delete
+	vim.api.nvim_set_hl(0, "EtoileConfirm", palette.normal)
+	vim.api.nvim_set_hl(0, "EtoileConfirmBorder", palette.border)
+	vim.api.nvim_set_hl(0, "EtoileConfirmTitle", palette.title)
+	vim.api.nvim_set_hl(0, "EtoileConfirmPath", palette.path)
+	vim.api.nvim_set_hl(0, "EtoileConfirmButton", palette.button)
 end
 
 local function pluralize(count, singular, plural)
@@ -424,17 +466,53 @@ local function delete_display_path(op, root)
 	return display_path
 end
 
-local function delete_confirm_lines(deletes, root)
-	local lines = { "Delete " .. #deletes .. " item(s)?", "" }
-	for _, op in ipairs(deletes) do
-		table.insert(lines, "- " .. delete_display_path(op, root))
+local function display_path(value, root, entry_type)
+	local result = root and path.relative(value, root) or value
+	if entry_type == "directory" and result:sub(-1) ~= "/" then
+		result = result .. "/"
 	end
-	table.insert(lines, "")
-	table.insert(lines, "[y] Delete    [Enter/n] Cancel")
+	return result
+end
+
+local function operation_display_path(op, root)
+	if op.type == "delete" then
+		return delete_display_path(op, root)
+	end
+	if op.type == "move" or op.type == "copy" then
+		return display_path(op.from, root, op.entry_type) .. " -> " .. display_path(op.to, root, op.entry_type)
+	end
+	return display_path(op.path, root, op.entry_type)
+end
+
+local confirm_labels = {
+	delete = "Delete",
+	move = "Move",
+	copy = "Copy",
+	create = "Create",
+}
+
+local function confirm_lines(by_type, root)
+	local total = 0
+	for _, op_type in ipairs({ "delete", "move", "copy", "create" }) do
+		total = total + #by_type[op_type]
+	end
+
+	local lines = { "Apply " .. total .. " change(s)?", "" }
+	for _, op_type in ipairs({ "delete", "move", "copy", "create" }) do
+		local ops = by_type[op_type]
+		if #ops > 0 then
+			table.insert(lines, (confirm_labels[op_type] or op_type) .. " (" .. #ops .. ")")
+			for _, op in ipairs(ops) do
+				table.insert(lines, "- " .. operation_display_path(op, root))
+			end
+			table.insert(lines, "")
+		end
+	end
+	table.insert(lines, "[y] Apply    [Enter/n] Cancel    [r] Revert")
 	return lines
 end
 
-local function delete_confirm_config(lines)
+local function confirm_config(lines, severity)
 	local width = 1
 	for _, line in ipairs(lines) do
 		width = math.max(width, display_width(line))
@@ -450,43 +528,49 @@ local function delete_confirm_config(lines)
 		height = #lines,
 		style = "minimal",
 		border = "rounded",
-		title = " Destructive Delete ",
+		title = severity == "delete" and " Confirm Destructive Changes " or " Confirm Changes ",
 		title_pos = "center",
 	}
 end
 
-local function confirm_delete(deletes, opts)
-	if opts.confirm_delete_fn then
-		return opts.confirm_delete_fn(delete_confirm_lines(deletes, opts.root))
+local function confirm_operations(by_type, opts)
+	local severity = confirm_severity(by_type)
+	local lines = confirm_lines(by_type, opts.root)
+	local confirm_fn = opts.confirm_fn
+	if confirm_fn then
+		return confirm_fn(lines)
 	end
 
-	local lines = delete_confirm_lines(deletes, opts.root)
-	setup_delete_confirm_highlights()
+	setup_confirm_highlights(severity)
 
 	local buf = vim.api.nvim_create_buf(false, true)
 	vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
 	vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
 	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
 
-	local win = vim.api.nvim_open_win(buf, true, delete_confirm_config(lines))
+	local win = vim.api.nvim_open_win(buf, true, confirm_config(lines, severity))
 	vim.api.nvim_set_option_value("wrap", false, { win = win })
 	vim.api.nvim_set_option_value("cursorline", false, { win = win })
 	vim.api.nvim_set_option_value(
 		"winhighlight",
-		"NormalFloat:EtoileDeleteConfirm,FloatBorder:EtoileDeleteConfirmBorder,FloatTitle:EtoileDeleteConfirmTitle",
+		"NormalFloat:EtoileConfirm,FloatBorder:EtoileConfirmBorder,FloatTitle:EtoileConfirmTitle",
 		{ win = win }
 	)
 
 	for line = 3, #lines - 2 do
-		vim.api.nvim_buf_add_highlight(buf, 0, "EtoileDeleteConfirmPath", line - 1, 0, -1)
+		vim.api.nvim_buf_add_highlight(buf, 0, "EtoileConfirmPath", line - 1, 0, -1)
 	end
-	vim.api.nvim_buf_add_highlight(buf, 0, "EtoileDeleteConfirmButton", #lines - 1, 0, -1)
+	vim.api.nvim_buf_add_highlight(buf, 0, "EtoileConfirmButton", #lines - 1, 0, -1)
 
-	local ok = false
+	local action = "cancel"
 	while true do
 		local key = vim.fn.getcharstr()
 		if key == "y" or key == "Y" then
-			ok = true
+			action = "apply"
+			break
+		end
+		if key == "r" or key == "R" then
+			action = "revert"
 			break
 		end
 		if key == "n" or key == "N" or key == "\r" or key == "\27" or key == "q" then
@@ -497,21 +581,40 @@ local function confirm_delete(deletes, opts)
 	if vim.api.nvim_win_is_valid(win) then
 		vim.api.nvim_win_close(win, true)
 	end
-	return ok
+	return action
 end
 
 function M.apply(ops, opts)
 	opts = opts or {}
-	local deletes = {}
+	local by_type = {
+		delete = {},
+		move = {},
+		copy = {},
+		create = {},
+	}
+	local confirmable = {
+		delete = {},
+		move = {},
+		copy = {},
+		create = {},
+	}
 	for _, op in ipairs(ops) do
-		if op.type == "delete" then
-			table.insert(deletes, op)
+		if by_type[op.type] then
+			table.insert(by_type[op.type], op)
+			if opts["confirm_" .. op.type] then
+				table.insert(confirmable[op.type], op)
+			end
 		end
 	end
 
-	if #deletes > 0 and opts.confirm_delete then
-		if not confirm_delete(deletes, opts) then
-			return false, "Delete canceled"
+	local confirm_count = #confirmable.delete + #confirmable.move + #confirmable.copy + #confirmable.create
+	if confirm_count > 0 then
+		local action = confirm_operations(confirmable, opts)
+		if action == false or action == nil or action == "cancel" then
+			return false, "Apply canceled"
+		end
+		if action == "revert" then
+			return false, "Apply reverted"
 		end
 	end
 
