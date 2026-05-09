@@ -153,6 +153,16 @@ local function parsed_lines(buf)
 	return parsed
 end
 
+local function blank_line_indent(buf, line)
+	local lines = vim.api.nvim_buf_get_lines(buf, line - 1, line, false)
+	local raw = lines[1]
+	if raw == nil or trim(raw) ~= "" then
+		return nil
+	end
+
+	return #leading_spaces(raw)
+end
+
 local function entry_for_current_line(parsed, entry)
 	if entry and parsed.name == entry.name then
 		local copy = vim.deepcopy(entry)
@@ -172,6 +182,19 @@ local function entry_for_current_line(parsed, entry)
 	local _, decoration = line_for(copy, parsed.depth)
 	copy.decoration = decoration
 	return copy
+end
+
+local function entry_for_blank_line(name_col)
+	local _, decoration = line_for({
+		name = "",
+		type = "file",
+		symlink = false,
+	}, math.floor(name_col / config.options.indent))
+	return {
+		decoration = decoration,
+		git_decoration = { git_decoration({}) },
+		name_col = name_col,
+	}
 end
 
 function M.render(root, expanded, opts)
@@ -412,7 +435,7 @@ local function collect_invalid_line_ids(buf, entries_by_id, mark_ids, parsed)
 	return released_ids
 end
 
-function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked)
+function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, current_line)
 	local marks_by_line = M.ids_by_line(buf, mark_ids)
 	local parsed = parsed_lines(buf)
 	local yank_index = 1
@@ -490,6 +513,25 @@ function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked)
 				})
 			end
 			vim.api.nvim_buf_set_extmark(buf, M.decor_ns, item.line - 1, entry.name_col or 0, {
+				virt_text = entry.decoration,
+				virt_text_pos = "inline",
+				priority = 101,
+			})
+		end
+	end
+
+	if current_line then
+		local name_col = blank_line_indent(buf, current_line)
+		if name_col then
+			local entry = entry_for_blank_line(name_col)
+			if entry.git_decoration and #entry.git_decoration > 0 then
+				vim.api.nvim_buf_set_extmark(buf, M.decor_ns, current_line - 1, 0, {
+					virt_text = entry.git_decoration,
+					virt_text_pos = "inline",
+					priority = 100,
+				})
+			end
+			vim.api.nvim_buf_set_extmark(buf, M.decor_ns, current_line - 1, entry.name_col or 0, {
 				virt_text = entry.decoration,
 				virt_text_pos = "inline",
 				priority = 101,

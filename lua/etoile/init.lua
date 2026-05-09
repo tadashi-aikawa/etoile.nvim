@@ -411,7 +411,15 @@ local function sync_decorations(state)
 	if state.sync_suspended then
 		return
 	end
-	renderer.sync_decorations(state.buf, state.entries_by_id or {}, state.mark_ids or {}, state.search, state.yanked)
+	local current_line = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or nil
+	renderer.sync_decorations(
+		state.buf,
+		state.entries_by_id or {},
+		state.mark_ids or {},
+		state.search,
+		state.yanked,
+		current_line
+	)
 	state.yanked = nil
 	sync_preview(state)
 end

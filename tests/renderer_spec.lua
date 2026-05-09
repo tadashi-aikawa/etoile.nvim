@@ -383,6 +383,40 @@ describe("etoile.renderer", function()
 		assert.are.same({ { "D ", "EtoileDirectoryIcon" } }, decorations_at(3)[2])
 	end)
 
+	it("shows a placeholder icon on the current blank line before text is inserted", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/dir",
+				path = "/tmp/project/dir",
+				name = "dir",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/dir2",
+				path = "/tmp/project/dir2",
+				name = "dir2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dir", "", "dir2" })
+		local mark_ids = renderer.decorate(1, entries)
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil, 2)
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same(nil, lines[2].id)
+		assert.are.same({ { "   ", "Normal" } }, decorations_at(2)[1])
+		assert.are.same({ { "F ", "FileIcon" } }, decorations_at(2)[2])
+	end)
+
 	it("keeps a directory icon while renaming a collapsed directory", function()
 		local config = require("etoile.config")
 		config.setup({
