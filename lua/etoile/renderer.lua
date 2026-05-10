@@ -440,8 +440,22 @@ local function collect_invalid_line_ids(buf, entries_by_id, mark_ids, parsed)
 	end
 
 	local released_ids = {}
-	for line, entry_id in pairs(M.ids_by_line(buf, mark_ids)) do
-		if not valid_lines[line] and entries_by_id[entry_id] then
+	local extmarks = vim.api.nvim_buf_get_extmarks(buf, M.id_ns, 0, -1, { details = true })
+	local marked_ids = {}
+	for _, mark in ipairs(extmarks) do
+		local details = mark[4] or {}
+		local entry_id = mark_ids and mark_ids[mark[1]]
+		local line = mark[2] + 1
+		if entry_id and entries_by_id[entry_id] then
+			if details.invalid or not valid_lines[line] then
+				released_ids[entry_id] = true
+			else
+				marked_ids[entry_id] = true
+			end
+		end
+	end
+	for entry_id in pairs(entries_by_id) do
+		if not marked_ids[entry_id] then
 			released_ids[entry_id] = true
 		end
 	end
@@ -511,9 +525,9 @@ function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, curren
 
 		if
 			entry
-			and item.type == "directory"
 			and not matches_current_line
 			and has_matching_entry_line(parsed, entry, item.line)
+			and (item.type == "directory" or matching_entry_id(item, entries_by_id, used_ids, released_ids))
 		then
 			released_ids[entry_id] = true
 			entry_id = nil

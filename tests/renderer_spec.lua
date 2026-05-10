@@ -341,6 +341,112 @@ describe("etoile.renderer", function()
 		assert.are.same("/tmp/project/package.json", lines[3].id)
 	end)
 
+	it("repairs ids after undo restores a deleted directory line with the next line id", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/d1",
+				path = "/tmp/project/d1",
+				name = "d1",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/d2",
+				path = "/tmp/project/d2",
+				name = "d2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/d3",
+				path = "/tmp/project/d3",
+				name = "d3",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "d1", "d2", "d3" })
+		local mark_ids = renderer.decorate(1, entries)
+
+		for _, mark in ipairs(buffers[1].extmarks) do
+			if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d2" then
+				mark.opts.invalid = true
+			elseif mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d3" then
+				mark.line = 1
+			end
+		end
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same("/tmp/project/d1", lines[1].id)
+		assert.are.same("/tmp/project/d2", lines[2].id)
+		assert.are.same("/tmp/project/d3", lines[3].id)
+	end)
+
+	it("repairs ids after undo restores a deleted directory line when the deleted line id is missing", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/d1",
+				path = "/tmp/project/d1",
+				name = "d1",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/d2",
+				path = "/tmp/project/d2",
+				name = "d2",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+			{
+				id = "/tmp/project/d3",
+				path = "/tmp/project/d3",
+				name = "d3",
+				type = "directory",
+				depth = 0,
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "d1", "d2", "d3" })
+		local mark_ids = renderer.decorate(1, entries)
+		local kept = {}
+		for _, mark in ipairs(buffers[1].extmarks) do
+			if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d2" then
+				-- Simulate Neovim undo restoring the text but dropping the deleted line id.
+			else
+				if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d3" then
+					mark.line = 1
+				end
+				table.insert(kept, mark)
+			end
+		end
+		buffers[1].extmarks = kept
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+
+		local lines = renderer.lines_with_ids(1, mark_ids)
+		assert.are.same("/tmp/project/d1", lines[1].id)
+		assert.are.same("/tmp/project/d2", lines[2].id)
+		assert.are.same("/tmp/project/d3", lines[3].id)
+	end)
+
 	it("keeps yanked child ids when an expanded directory is pasted above the source and renamed", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
