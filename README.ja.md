@@ -263,6 +263,8 @@ require("etoile").setup({
 
 preview 幅は `preview.width_ratio`, `preview.min_width`, `preview.max_width` で制御する。preview 高さは `float` と同じ height option の semantics を使う。
 
+`preview.debounce_ms = 80` は cursor move による preview 更新を遅延させる。`j` や `k` を押しっぱなしにした場合は、移動が落ち着いてから preview する。`0` にするとカーソル移動ごとに即時更新する。
+
 ディレクトリ preview はデフォルトで有効で、`preview.directory.max_depth = 2` まで表示する。preview 対象の直下 child は depth `0`。`preview.directory.enabled = false` で無効化できる。
 
 ### keymaps

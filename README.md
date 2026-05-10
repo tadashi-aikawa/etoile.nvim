@@ -267,6 +267,8 @@ Height is controlled by `height_ratio`, `max_height`, `max_height_ratio`, `min_h
 
 Preview width is controlled by `preview.width_ratio`, `preview.min_width`, and `preview.max_width`. Preview height uses the same height option semantics as `float`.
 
+`preview.debounce_ms = 80` delays cursor-move preview updates so holding `j` or `k` only previews after movement settles. Set it to `0` to update immediately on every cursor move.
+
 Directory preview is enabled by default and limited to `preview.directory.max_depth = 2`. The preview target's direct children are depth `0`. Set `preview.directory.enabled = false` to disable directory previews.
 
 ### keymaps

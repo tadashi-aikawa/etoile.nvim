@@ -418,6 +418,26 @@ local function sync_preview(state)
 	preview.sync(state, entry.path, entry.type)
 end
 
+local function schedule_sync_preview(state)
+	local delay = config.options.preview.debounce_ms or 0
+	if delay <= 0 then
+		sync_preview(state)
+		return
+	end
+
+	state.preview_sync_token = (state.preview_sync_token or 0) + 1
+	local token = state.preview_sync_token
+	vim.defer_fn(function()
+		if token ~= state.preview_sync_token then
+			return
+		end
+		if not valid_win(state.win) then
+			return
+		end
+		sync_preview(state)
+	end, delay)
+end
+
 local function map(buf, lhs, rhs, desc)
 	vim.keymap.set("n", lhs, rhs, { buffer = buf, silent = true, desc = desc })
 end
@@ -546,7 +566,7 @@ local function setup_buffer(state)
 	vim.api.nvim_create_autocmd("CursorMoved", {
 		buffer = state.buf,
 		callback = function()
-			sync_preview(state)
+			schedule_sync_preview(state)
 		end,
 	})
 

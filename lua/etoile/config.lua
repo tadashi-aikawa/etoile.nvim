@@ -33,6 +33,7 @@ local defaults = {
 		min_height = 10,
 		min_height_ratio = 0.2,
 		height_ratio = 0.8,
+		debounce_ms = 80,
 		directory = {
 			enabled = true,
 			max_depth = 2,
