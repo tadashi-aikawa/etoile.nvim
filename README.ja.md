@@ -107,7 +107,7 @@ require("etoile").open({ path = "/path/to/project" })
 | `-` | ツリー root を親ディレクトリへ移動 |
 | `<C-]>` | ツリー root をカーソル下のディレクトリへ移動 |
 | `<C-p>` | preview float を toggle |
-| `<leader>w` | tree float と preview float の focus を切り替え |
+| `<leader>w` | tree window と preview float の focus を切り替え |
 | `<leader>s` | 現在の root 配下を検索 |
 | `<leader>n` | 次の検索結果へ移動 |
 | `<leader>N` | 前の検索結果へ移動 |
@@ -159,7 +159,7 @@ require("etoile").setup({
   root = {
     strategy = "git_or_cwd",
   },
-  float = {
+  tree = {
     border = "rounded",
     width_padding = 2,
     left_padding = 3,
@@ -242,13 +242,13 @@ require("etoile").setup({
 
 `root.strategy = "git_or_cwd"` は現在の root 解決動作を表す。`:Etoile` または `require("etoile").open()` に path が渡されない場合、現在 buffer path から最寄りの Git root を使う。Git root が存在しない場合は current working directory に fallback する。
 
-### float
+### tree
 
-`float` は main tree window を制御する。
+`tree` は main tree window を制御する。
 
 - window title には `Etoile - <root directory name>` を表示する。
 - `position = "source_window"` は etoile を開いた window の左端付近に tree を表示する。
-- `position = "editor"` にすると、固定の editor-relative な `float.col` を使う。
+- `position = "editor"` にすると、固定の editor-relative な `tree.col` を使う。
 - `reserve_preview_width = true` は preview を右側に開けるよう、必要に応じて main tree を左へ寄せる。
 - `row = nil` の場合は tree を垂直中央に配置する。数値を指定すると固定の editor-relative row を使う。
 - `left_padding` は Git status icon 用の領域を確保する。
@@ -261,7 +261,7 @@ require("etoile").setup({
 
 `preview.enabled = true` の場合、etoile を開いた時点で preview float も開く。`false` にすると preview を閉じた状態で開始する。
 
-preview 幅は `preview.width_ratio`, `preview.min_width`, `preview.max_width` で制御する。preview 高さは `float` と同じ height option の semantics を使う。
+preview 幅は `preview.width_ratio`, `preview.min_width`, `preview.max_width` で制御する。preview 高さは `tree` と同じ height option の semantics を使う。
 
 `preview.debounce_ms = 80` は cursor move による preview 更新を遅延させる。`j` や `k` を押しっぱなしにした場合は、移動が落ち着いてから preview する。`0` にするとカーソル移動ごとに即時更新する。
 

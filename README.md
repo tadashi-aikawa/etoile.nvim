@@ -107,7 +107,7 @@ require("etoile").open({ path = "/path/to/project" })
 | `-` | Move the tree root to the parent directory |
 | `<C-]>` | Move the tree root to the directory under the cursor |
 | `<C-p>` | Toggle the preview float |
-| `<leader>w` | Switch focus between the tree float and preview float |
+| `<leader>w` | Switch focus between the tree window and preview float |
 | `<leader>s` | Search all entries under the current root |
 | `<leader>n` | Jump to the next search result |
 | `<leader>N` | Jump to the previous search result |
@@ -163,7 +163,7 @@ require("etoile").setup({
   root = {
     strategy = "git_or_cwd",
   },
-  float = {
+  tree = {
     border = "rounded",
     width_padding = 2,
     left_padding = 3,
@@ -246,13 +246,13 @@ require("etoile").setup({
 
 `root.strategy = "git_or_cwd"` is the current root resolution behavior. When no path is passed to `:Etoile` or `require("etoile").open()`, etoile uses the nearest Git root from the current buffer path. If no Git root exists, it falls back to the current working directory.
 
-### float
+### tree
 
-`float` controls the main tree window.
+`tree` controls the main tree window.
 
 - The window title shows `Etoile - <root directory name>`.
 - `position = "source_window"` places the tree near the left edge of the window that opened etoile.
-- Set `position = "editor"` to use the fixed editor-relative `float.col` value.
+- Set `position = "editor"` to use the fixed editor-relative `tree.col` value.
 - `reserve_preview_width = true` shifts the main tree left when needed so the preview can open on the right side.
 - `row = nil` vertically centers the tree. Set a number to use a fixed editor-relative row.
 - `left_padding` reserves room for Git status icons.
@@ -265,7 +265,7 @@ Height is controlled by `height_ratio`, `max_height`, `max_height_ratio`, `min_h
 
 `preview.enabled = true` opens the preview float as soon as etoile opens. Set it to `false` to start with preview closed.
 
-Preview width is controlled by `preview.width_ratio`, `preview.min_width`, and `preview.max_width`. Preview height uses the same height option semantics as `float`.
+Preview width is controlled by `preview.width_ratio`, `preview.min_width`, and `preview.max_width`. Preview height uses the same height option semantics as `tree`.
 
 `preview.debounce_ms = 80` delays cursor-move preview updates so holding `j` or `k` only previews after movement settles. Set it to `0` to update immediately on every cursor move.
 

@@ -44,7 +44,7 @@ local function expand_to_current(state)
 end
 
 local function source_win_col(state)
-	local opts = config.options.float
+	local opts = config.options.tree
 	if opts.position ~= "source_window" or not valid_win(state.source_win) then
 		return opts.col
 	end
@@ -58,8 +58,8 @@ local function source_win_col(state)
 end
 
 local function preview_reserved_width()
-	local float_opts = config.options.float
-	if not float_opts.reserve_preview_width then
+	local tree_opts = config.options.tree
+	if not tree_opts.reserve_preview_width then
 		return 0
 	end
 
@@ -67,8 +67,8 @@ local function preview_reserved_width()
 	return 2 + (preview_opts.max_width or 0)
 end
 
-local function float_config(state)
-	local opts = config.options.float
+local function tree_config(state)
+	local opts = config.options.tree
 	local width = layout.clamp(
 		state.rendered.max_width + opts.width_padding + (opts.icon_width_padding or 0) + (opts.right_padding or 0),
 		opts.min_width,
@@ -118,7 +118,7 @@ local function refresh(state)
 	vim.api.nvim_set_option_value("modified", false, { buf = state.buf })
 
 	if valid_win(state.win) then
-		vim.api.nvim_win_set_config(state.win, float_config(state))
+		vim.api.nvim_win_set_config(state.win, tree_config(state))
 		vim.wo[state.win].number = true
 		vim.wo[state.win].relativenumber = false
 		local focus_path = state.focus_path
@@ -144,7 +144,7 @@ local function refresh_git_status(state)
 	renderer.refresh_git_status(state.root, state.rendered)
 	renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
 	if valid_win(state.win) then
-		vim.api.nvim_win_set_config(state.win, float_config(state))
+		vim.api.nvim_win_set_config(state.win, tree_config(state))
 	end
 end
 
@@ -594,7 +594,7 @@ function M.open(opts)
 	}
 	state.resize_main = function()
 		if valid_win(state.win) then
-			vim.api.nvim_win_set_config(state.win, float_config(state))
+			vim.api.nvim_win_set_config(state.win, tree_config(state))
 		end
 	end
 	state.refresh_git_status = function()
@@ -613,7 +613,7 @@ function M.open(opts)
 	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
 	state.mark_ids = renderer.decorate(state.buf, state.rendered.entries, state.search)
 	state.sync_suspended = false
-	state.win = vim.api.nvim_open_win(state.buf, true, float_config(state))
+	state.win = vim.api.nvim_open_win(state.buf, true, tree_config(state))
 	vim.wo[state.win].number = true
 	vim.wo[state.win].relativenumber = false
 	set_cursor_to_path(state, state.focus_path)

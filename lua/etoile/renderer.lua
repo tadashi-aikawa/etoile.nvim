@@ -57,7 +57,7 @@ local function git_highlight(status)
 end
 
 local function git_decoration(entry)
-	local left_padding = config.options.float.left_padding or 0
+	local left_padding = config.options.tree.left_padding or 0
 	if left_padding <= 0 then
 		return nil
 	end

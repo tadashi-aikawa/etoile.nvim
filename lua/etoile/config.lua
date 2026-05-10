@@ -4,7 +4,7 @@ local defaults = {
 	root = {
 		strategy = "git_or_cwd",
 	},
-	float = {
+	tree = {
 		border = "rounded",
 		width_padding = 2,
 		left_padding = 3,
