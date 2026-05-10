@@ -125,6 +125,7 @@ local function reset_vim()
 			nvim_create_augroup = function(name)
 				return name
 			end,
+			nvim_set_option_value = function() end,
 			nvim_buf_set_lines = function(buf, start, finish, _, replacement)
 				local lines = buffers[buf].lines
 				local last = finish == -1 and #lines or finish
@@ -143,6 +144,8 @@ local function reset_vim()
 					opts = deepcopy(opts),
 				})
 			end,
+			nvim_buf_clear_namespace = function() end,
+			nvim_buf_add_highlight = function() end,
 			nvim_buf_is_valid = function()
 				return true
 			end,
@@ -191,6 +194,7 @@ local function reset_vim()
 	}
 
 	package.loaded["etoile.preview"] = nil
+	package.loaded["etoile.help"] = nil
 	package.loaded["etoile.renderer"] = nil
 	package.loaded["etoile.icons"] = nil
 	package.loaded["etoile.scanner"] = nil
@@ -307,6 +311,33 @@ describe("etoile.preview", function()
 		assert.are.equal("Toggle etoile focus", set_keymaps[1].opts.desc)
 		assert.are.equal("<C-w>h", set_keymaps[2].lhs)
 		assert.are.equal("Focus etoile main", set_keymaps[2].opts.desc)
+		assert.are.equal("<leader>?", set_keymaps[3].lhs)
+		assert.are.equal("Show etoile keymaps", set_keymaps[3].opts.desc)
+	end)
+
+	it("shows preview keymap help by default", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+
+		preview.open({ win = 1, buf = 1 }, "/tmp/project/new.lua", "file")
+
+		set_keymaps[3].rhs()
+
+		assert.is_truthy(buffers[2].lines[1]:find("Tree  Preview", 1, true))
+		assert.is_truthy(buffers[2].lines[3]:find("<C-w>w", 1, true))
+		assert.is_truthy(buffers[2].lines[4]:find("<C-w>h", 1, true))
+		assert.is_truthy(buffers[2].lines[5]:find("<leader>?", 1, true))
+
+		for _, keymap in ipairs(set_keymaps) do
+			if keymap.lhs == "<Tab>" then
+				keymap.rhs()
+				break
+			end
+		end
+
+		assert.is_truthy(buffers[2].lines[1]:find("Tree  Preview", 1, true))
+		assert.is_truthy(buffers[2].lines[3]:find("<CR>", 1, true))
 	end)
 
 	it("focuses preview and tree explicitly", function()

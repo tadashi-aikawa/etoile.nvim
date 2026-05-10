@@ -51,6 +51,7 @@ local defaults = {
 		search_next = "<leader>n",
 		search_prev = "<leader>N",
 		search_clear = "<leader>l",
+		help = "<leader>?",
 		close = "q",
 		focus_toggle = "<C-w>w",
 		focus_preview = "<C-w>l",

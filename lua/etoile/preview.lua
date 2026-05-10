@@ -1,4 +1,5 @@
 local config = require("etoile.config")
+local help = require("etoile.help")
 local icons = require("etoile.icons")
 local layout = require("etoile.layout")
 local path = require("etoile.path")
@@ -196,6 +197,9 @@ local function unmap_preview_keys(state)
 	if keys.focus_tree and keys.focus_tree ~= "" then
 		pcall(vim.keymap.del, "n", keys.focus_tree, { buffer = state.preview_mapped_buf })
 	end
+	if keys.help and keys.help ~= "" then
+		pcall(vim.keymap.del, "n", keys.help, { buffer = state.preview_mapped_buf })
+	end
 	pcall(vim.keymap.del, "n", "<C-o>", { buffer = state.preview_mapped_buf })
 	pcall(vim.keymap.del, "n", "<C-i>", { buffer = state.preview_mapped_buf })
 	state.preview_mapped_buf = nil
@@ -236,6 +240,11 @@ local function map_preview_keys(state, buf)
 		vim.keymap.set("n", keys.focus_tree, function()
 			M.focus_tree(state)
 		end, { buffer = buf, silent = true, desc = "Focus etoile main" })
+	end
+	if keys.help and keys.help ~= "" then
+		vim.keymap.set("n", keys.help, function()
+			help.open("preview")
+		end, { buffer = buf, silent = true, desc = "Show etoile keymaps" })
 	end
 	vim.keymap.set("n", "<C-o>", function()
 		jump_avoiding_main(state, "<C-o>")

@@ -114,6 +114,7 @@ require("etoile").open({ path = "/path/to/project" })
 | `<leader>n` | Jump to the next search result |
 | `<leader>N` | Jump to the previous search result |
 | `<leader>l` | Clear search highlights |
+| `<leader>?` | Show tree/preview keymap help |
 | `q` | Close etoile |
 | `<C-o>` / `<C-i>` | Jump backward/forward while staying in the etoile window |
 
@@ -211,6 +212,7 @@ require("etoile").setup({
     search_next = "<leader>n",
     search_prev = "<leader>N",
     search_clear = "<leader>l",
+    help = "<leader>?",
     close = "q",
     focus_toggle = "<C-w>w",
     focus_preview = "<C-w>l",
@@ -281,6 +283,8 @@ Directory preview is enabled by default and limited to `preview.directory.max_de
 ### keymaps
 
 All configurable mappings are buffer-local. `focus_toggle` switches between the tree window and preview buffer. `focus_preview` is mapped in the tree buffer, and `focus_tree` is mapped in the preview buffer.
+
+`help` is mapped in both the tree and preview buffers. The help window opens with the current buffer's tab selected, and the Tree / Preview tabs can be switched with `<Tab>` and `<S-Tab>`.
 
 `open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
 

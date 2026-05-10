@@ -13,6 +13,9 @@ local preview_calls
 local last_render_expanded
 local input_value
 local last_search
+local opened_win_configs
+local set_win_configs
+local highlights
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -48,6 +51,9 @@ local function reset_vim()
 	last_render_expanded = nil
 	input_value = ""
 	last_search = nil
+	opened_win_configs = {}
+	set_win_configs = {}
+	highlights = {}
 
 	_G.vim = {
 		o = {
@@ -102,6 +108,9 @@ local function reset_vim()
 			end,
 		},
 		api = {
+			nvim_create_namespace = function(name)
+				return name
+			end,
 			nvim_buf_get_name = function()
 				return ""
 			end,
@@ -119,10 +128,21 @@ local function reset_vim()
 			nvim_buf_set_lines = function(_, _, _, _, lines)
 				buffer_lines = deepcopy(lines)
 			end,
+			nvim_buf_clear_namespace = function() end,
+			nvim_buf_add_highlight = function(_, ns, hl_group, line, start_col, end_col)
+				table.insert(highlights, {
+					ns = ns,
+					hl_group = hl_group,
+					line = line,
+					start_col = start_col,
+					end_col = end_col,
+				})
+			end,
 			nvim_buf_get_lines = function()
 				return deepcopy(buffer_lines)
 			end,
-			nvim_open_win = function()
+			nvim_open_win = function(_, _, opts)
+				table.insert(opened_win_configs, deepcopy(opts))
 				return 20
 			end,
 			nvim_win_is_valid = function(win)
@@ -144,7 +164,9 @@ local function reset_vim()
 			nvim_win_get_position = function()
 				return { 0, 0 }
 			end,
-			nvim_win_set_config = function() end,
+			nvim_win_set_config = function(_, opts)
+				table.insert(set_win_configs, deepcopy(opts))
+			end,
 			nvim_create_autocmd = function(event, opts)
 				if type(event) == "table" then
 					for _, item in ipairs(event) do
@@ -180,6 +202,7 @@ local function reset_vim()
 
 	package.loaded["etoile"] = nil
 	package.loaded["etoile.config"] = nil
+	package.loaded["etoile.help"] = nil
 	package.loaded["etoile.editor"] = {
 		snapshot = function(entries)
 			return entries
@@ -280,6 +303,55 @@ describe("etoile", function()
 		assert.are.equal("Open etoile entry in horizontal split", keymaps["<C-x>"].opts.desc)
 		assert.are.equal("Open etoile entry in vertical split", keymaps["<C-v>"].opts.desc)
 		assert.are.equal("Open etoile entry in new tab", keymaps["<C-t>"].opts.desc)
+	end)
+
+	it("shows tree keymap help by default", function()
+		open_etoile()
+
+		assert.are.equal("Show etoile keymaps", keymaps["<leader>?"].opts.desc)
+
+		keymaps["<leader>?"].rhs()
+
+		assert.is_truthy(buffer_lines[1]:find("Tree  Preview", 1, true))
+		local help_height = opened_win_configs[#opened_win_configs].height
+		local help_width = opened_win_configs[#opened_win_configs].width
+		assert.are.equal(math.floor((help_width - #"Tree  Preview") / 2), buffer_lines[1]:find("Tree", 1, true) - 1)
+		assert.are.same({
+			ns = "etoile_help",
+			hl_group = "TabLineSel",
+			line = 0,
+			start_col = buffer_lines[1]:find("Tree", 1, true) - 1,
+			end_col = buffer_lines[1]:find("Tree", 1, true) - 1 + #"Tree",
+		}, highlights[#highlights])
+		assert.is_truthy(buffer_lines[3]:find("<CR>", 1, true))
+		assert.is_truthy(buffer_lines[3]:find("Open etoile entry", 1, true))
+		assert.is_truthy(buffer_lines[17]:find("q", 1, true))
+		assert.is_truthy(buffer_lines[17]:find("Close etoile", 1, true))
+
+		keymaps["<Tab>"].rhs()
+
+		assert.is_truthy(buffer_lines[1]:find("Tree  Preview", 1, true))
+		assert.is_truthy(buffer_lines[3]:find("<C-w>w", 1, true))
+		assert.is_truthy(buffer_lines[4]:find("<C-w>h", 1, true))
+		assert.is_truthy(buffer_lines[5]:find("<leader>?", 1, true))
+		assert.are.equal(help_height, set_win_configs[#set_win_configs].height)
+		assert.are.same({
+			ns = "etoile_help",
+			hl_group = "TabLineSel",
+			line = 0,
+			start_col = buffer_lines[1]:find("Preview", 1, true) - 1,
+			end_col = buffer_lines[1]:find("Preview", 1, true) - 1 + #"Preview",
+		}, highlights[#highlights])
+		assert.is_nil(keymaps["["])
+		assert.is_nil(keymaps["]"])
+
+		keymaps["<S-Tab>"].rhs()
+
+		assert.is_truthy(buffer_lines[1]:find("Tree  Preview", 1, true))
+		assert.are.equal(help_height, set_win_configs[#set_win_configs].height)
+		assert.are.equal("Close etoile keymap help", keymaps["q"].opts.desc)
+		assert.are.equal("Close etoile keymap help", keymaps["<Esc>"].opts.desc)
+		assert.are.equal("Close etoile keymap help", keymaps["<CR>"].opts.desc)
 	end)
 
 	it("opens entries with edit, split, vsplit, and tabedit commands", function()
