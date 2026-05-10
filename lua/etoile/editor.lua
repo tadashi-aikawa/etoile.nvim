@@ -76,6 +76,12 @@ local function parse_line(item)
 	}
 end
 
+local function has_child(parsed_lines, index)
+	local parsed = parsed_lines[index]
+	local next_line = parsed_lines[index + 1]
+	return parsed and next_line and next_line.depth > parsed.depth
+end
+
 local function parse_lines(lines)
 	local parsed_lines = {}
 	local source_indexes = {}
@@ -89,9 +95,7 @@ local function parse_lines(lines)
 	end
 
 	for index, parsed in ipairs(parsed_lines) do
-		local next_line = parsed_lines[index + 1]
-		parsed.type = (parsed.explicit_directory or (next_line and next_line.depth > parsed.depth)) and "directory"
-			or "file"
+		parsed.type = (parsed.explicit_directory or has_child(parsed_lines, index)) and "directory" or "file"
 		parsed.source_index = source_indexes[index]
 	end
 
@@ -224,6 +228,19 @@ function M.diff(root, snapshot, lines)
 	end
 
 	return M.filter_redundant_ops(ops)
+end
+
+function M.expanded_paths(root, lines)
+	local parsed_lines = normalize_parsed_tree(root, parse_lines(lines))
+	local expanded = {}
+
+	for index, parsed in ipairs(parsed_lines) do
+		if parsed.type == "directory" and has_child(parsed_lines, index) then
+			expanded[parsed.path] = true
+		end
+	end
+
+	return expanded
 end
 
 function M.filter_redundant_ops(ops)

@@ -298,6 +298,7 @@ end
 
 local function save_changes(state)
 	local lines = renderer.lines_with_ids(state.buf, state.mark_ids)
+	local edited_expanded = editor.expanded_paths(state.root, lines)
 	local ops = editor.diff(state.root, state.snapshot, lines)
 	local ok, err = editor.apply(ops, {
 		confirm_delete = config.options.confirm.delete,
@@ -316,6 +317,9 @@ local function save_changes(state)
 		refresh(state)
 		sync_open_preview(state)
 		return
+	end
+	for expanded_path in pairs(edited_expanded) do
+		state.expanded[expanded_path] = true
 	end
 	if #ops > 0 then
 		refresh_without_undo(state)

@@ -586,6 +586,20 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("detects expanded paths from a copied expanded directory", function()
+		local expanded = editor.expanded_paths("/tmp/project", {
+			{ line = "dir5", id = "/tmp/project/dir5", mark_id = 1 },
+			{ line = "  hoge6.md", id = "/tmp/project/dir5/hoge6.md", mark_id = 2 },
+			{ line = "dir6", id = "/tmp/project/dir5", mark_id = 3 },
+			{ line = "  hoge6.md", id = "/tmp/project/dir5/hoge6.md", mark_id = 4 },
+		})
+
+		assert.are.same({
+			["/tmp/project/dir5"] = true,
+			["/tmp/project/dir6"] = true,
+		}, expanded)
+	end)
+
 	it("moves the source when only a copied renamed line remains", function()
 		local entries = {
 			{ path = "/tmp/project/base.md", name = "base.md", type = "file" },
