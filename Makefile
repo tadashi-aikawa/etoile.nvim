@@ -1,4 +1,6 @@
-.PHONY: test format format-check
+.PHONY: test format format-check ci
+
+ci: format-check test
 
 test:
 	busted
