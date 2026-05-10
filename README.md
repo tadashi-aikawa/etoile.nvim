@@ -107,7 +107,9 @@ require("etoile").open({ path = "/path/to/project" })
 | `-` | Move the tree root to the parent directory |
 | `<C-]>` | Move the tree root to the directory under the cursor |
 | `<C-p>` | Toggle the preview float |
-| `<leader>w` | Switch focus between the tree window and preview float |
+| `<C-w>w` | Switch focus between the tree window and preview float |
+| `<C-w>l` | Focus the preview float |
+| `<C-w>h` | Focus the tree window |
 | `<leader>s` | Search all entries under the current root |
 | `<leader>n` | Jump to the next search result |
 | `<leader>N` | Jump to the previous search result |
@@ -207,7 +209,9 @@ require("etoile").setup({
     search_prev = "<leader>N",
     search_clear = "<leader>l",
     close = "q",
-    focus_preview = "<leader>w",
+    focus_toggle = "<C-w>w",
+    focus_preview = "<C-w>l",
+    focus_tree = "<C-w>h",
   },
   search = {
     exclude = { ".git", "node_modules", ".cache" },
@@ -273,7 +277,7 @@ Directory preview is enabled by default and limited to `preview.directory.max_de
 
 ### keymaps
 
-All configurable mappings are buffer-local to the etoile buffer. `focus_preview` is also mapped in the preview buffer so the same key toggles focus back to the main tree.
+All configurable mappings are buffer-local. `focus_toggle` switches between the tree window and preview buffer. `focus_preview` is mapped in the tree buffer, and `focus_tree` is mapped in the preview buffer.
 
 `<C-o>` and `<C-i>` are always mapped internally to keep jump navigation from accidentally replacing the etoile window with another buffer.
 

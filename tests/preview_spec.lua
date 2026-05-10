@@ -6,6 +6,9 @@ local stat_by_path
 local win_configs
 local set_win_configs
 local set_win_bufs
+local set_keymaps
+local deleted_keymaps
+local current_win
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -33,6 +36,9 @@ local function reset_vim()
 	}
 	set_win_configs = {}
 	set_win_bufs = {}
+	set_keymaps = {}
+	deleted_keymaps = {}
+	current_win = 1
 
 	_G.vim = {
 		o = {
@@ -160,6 +166,12 @@ local function reset_vim()
 			nvim_win_is_valid = function()
 				return true
 			end,
+			nvim_get_current_win = function()
+				return current_win
+			end,
+			nvim_set_current_win = function(win)
+				current_win = win
+			end,
 		},
 		wo = setmetatable({}, {
 			__index = function(table, key)
@@ -169,8 +181,12 @@ local function reset_vim()
 			end,
 		}),
 		keymap = {
-			set = function() end,
-			del = function() end,
+			set = function(mode, lhs, rhs, opts)
+				table.insert(set_keymaps, { mode = mode, lhs = lhs, rhs = rhs, opts = deepcopy(opts) })
+			end,
+			del = function(mode, lhs, opts)
+				table.insert(deleted_keymaps, { mode = mode, lhs = lhs, opts = deepcopy(opts) })
+			end,
 		},
 	}
 
@@ -278,6 +294,42 @@ describe("etoile.preview", function()
 		assert.are.same({}, added_buffers)
 		assert.are.same({}, loaded_buffers)
 		assert.are.equal("nofile", vim.bo[1].buftype)
+	end)
+
+	it("maps preview focus controls with default keys", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+
+		preview.open({ win = 1, buf = 1 }, "/tmp/project/new.lua", "file")
+
+		assert.are.equal("<C-w>w", set_keymaps[1].lhs)
+		assert.are.equal("Toggle etoile focus", set_keymaps[1].opts.desc)
+		assert.are.equal("<C-w>h", set_keymaps[2].lhs)
+		assert.are.equal("Focus etoile main", set_keymaps[2].opts.desc)
+	end)
+
+	it("focuses preview and tree explicitly", function()
+		local preview = require("etoile.preview")
+		local state = { win = 1, preview_win = 2 }
+
+		preview.focus_preview(state)
+		assert.are.equal(2, current_win)
+
+		preview.focus_tree(state)
+		assert.are.equal(1, current_win)
+	end)
+
+	it("toggles focus between preview and tree", function()
+		local preview = require("etoile.preview")
+		local state = { win = 1, preview_win = 2 }
+
+		current_win = 1
+		preview.focus_toggle(state)
+		assert.are.equal(2, current_win)
+
+		preview.focus_toggle(state)
+		assert.are.equal(1, current_win)
 	end)
 
 	it("reloads a missing file scratch preview after the file appears", function()

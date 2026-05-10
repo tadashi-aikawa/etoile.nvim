@@ -190,8 +190,11 @@ local function unmap_preview_keys(state)
 	end
 
 	local keys = config.options.keymaps
-	if keys.focus_preview and keys.focus_preview ~= "" then
-		pcall(vim.keymap.del, "n", keys.focus_preview, { buffer = state.preview_mapped_buf })
+	if keys.focus_toggle and keys.focus_toggle ~= "" then
+		pcall(vim.keymap.del, "n", keys.focus_toggle, { buffer = state.preview_mapped_buf })
+	end
+	if keys.focus_tree and keys.focus_tree ~= "" then
+		pcall(vim.keymap.del, "n", keys.focus_tree, { buffer = state.preview_mapped_buf })
 	end
 	pcall(vim.keymap.del, "n", "<C-o>", { buffer = state.preview_mapped_buf })
 	pcall(vim.keymap.del, "n", "<C-i>", { buffer = state.preview_mapped_buf })
@@ -224,9 +227,14 @@ local function map_preview_keys(state, buf)
 	end
 
 	local keys = config.options.keymaps
-	if keys.focus_preview and keys.focus_preview ~= "" then
-		vim.keymap.set("n", keys.focus_preview, function()
+	if keys.focus_toggle and keys.focus_toggle ~= "" then
+		vim.keymap.set("n", keys.focus_toggle, function()
 			M.focus_toggle(state)
+		end, { buffer = buf, silent = true, desc = "Toggle etoile focus" })
+	end
+	if keys.focus_tree and keys.focus_tree ~= "" then
+		vim.keymap.set("n", keys.focus_tree, function()
+			M.focus_tree(state)
 		end, { buffer = buf, silent = true, desc = "Focus etoile main" })
 	end
 	vim.keymap.set("n", "<C-o>", function()
@@ -415,10 +423,26 @@ function M.focus_toggle(state)
 	end
 
 	if vim.api.nvim_get_current_win() == state.preview_win then
-		vim.api.nvim_set_current_win(state.win)
+		M.focus_tree(state)
 	else
-		vim.api.nvim_set_current_win(state.preview_win)
+		M.focus_preview(state)
 	end
+end
+
+function M.focus_preview(state)
+	if not M.is_open(state) then
+		return
+	end
+
+	vim.api.nvim_set_current_win(state.preview_win)
+end
+
+function M.focus_tree(state)
+	if not valid_win(state.win) then
+		return
+	end
+
+	vim.api.nvim_set_current_win(state.win)
 end
 
 function M.close(state)

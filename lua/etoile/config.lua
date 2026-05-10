@@ -49,7 +49,9 @@ local defaults = {
 		search_prev = "<leader>N",
 		search_clear = "<leader>l",
 		close = "q",
-		focus_preview = "<leader>w",
+		focus_toggle = "<C-w>w",
+		focus_preview = "<C-w>l",
+		focus_tree = "<C-w>h",
 	},
 	search = {
 		exclude = { ".git", "node_modules", ".cache" },
