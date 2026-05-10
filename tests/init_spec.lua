@@ -10,6 +10,7 @@ local set_cursors
 local current_entry
 local preview_open
 local preview_calls
+local last_render_expanded
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -42,6 +43,7 @@ local function reset_vim()
 	current_entry = nil
 	preview_open = false
 	preview_calls = {}
+	last_render_expanded = nil
 
 	_G.vim = {
 		o = {
@@ -204,7 +206,8 @@ local function reset_vim()
 		end,
 	}
 	package.loaded["etoile.renderer"] = {
-		render = function()
+		render = function(_, expanded)
+			last_render_expanded = deepcopy(expanded or {})
 			return {
 				lines = vim.tbl_map(function(entry)
 					return entry.name
@@ -301,6 +304,52 @@ describe("etoile", function()
 		autocmds.BufWriteCmd.callback()
 
 		assert.are.same({ 4, 0 }, set_cursors[#set_cursors])
+	end)
+
+	it("expands ancestors and moves the cursor to a newly created nested file", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/dir2", path = "/tmp/project/dir2", name = "dir2", type = "directory" },
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+		}
+		open_etoile()
+		buffer_lines = { "dir", "dir2", "c/cc/ccc.c", "aaa.md" }
+		cursor = { 3, 0 }
+		rendered_entries = {
+			{ id = "/tmp/project/c", path = "/tmp/project/c", name = "c", type = "directory" },
+			{ id = "/tmp/project/c/cc", path = "/tmp/project/c/cc", name = "cc", type = "directory" },
+			{ id = "/tmp/project/c/cc/ccc.c", path = "/tmp/project/c/cc/ccc.c", name = "ccc.c", type = "file" },
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/dir2", path = "/tmp/project/dir2", name = "dir2", type = "directory" },
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+		}
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.is_true(last_render_expanded["/tmp/project/c"])
+		assert.is_true(last_render_expanded["/tmp/project/c/cc"])
+		assert.are.same({ 3, 0 }, set_cursors[#set_cursors])
+	end)
+
+	it("falls back to the nearest visible ancestor when the saved path is not rendered", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/dir2", path = "/tmp/project/dir2", name = "dir2", type = "directory" },
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+		}
+		open_etoile()
+		buffer_lines = { "dir", "dir2", "c/cc/ccc.c", "aaa.md" }
+		cursor = { 3, 0 }
+		rendered_entries = {
+			{ id = "/tmp/project/c", path = "/tmp/project/c", name = "c", type = "directory" },
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/dir2", path = "/tmp/project/dir2", name = "dir2", type = "directory" },
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+		}
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({ 1, 0 }, set_cursors[#set_cursors])
 	end)
 
 	it("keeps preview content for renamed copied entries with an existing source", function()

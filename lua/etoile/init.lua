@@ -98,11 +98,33 @@ local function set_cursor_to_path(state, target)
 	if not target then
 		return
 	end
+	local fallback = nil
 	for index, entry in ipairs(state.rendered.entries) do
 		if path.normalize(entry.path) == path.normalize(target) then
 			vim.api.nvim_win_set_cursor(state.win, { index, 0 })
 			return
 		end
+		if path.is_ancestor(entry.path, target) and (not fallback or #entry.path > #fallback.path) then
+			fallback = {
+				index = index,
+				path = entry.path,
+			}
+		end
+	end
+	if fallback then
+		vim.api.nvim_win_set_cursor(state.win, { fallback.index, 0 })
+	end
+end
+
+local function expand_ancestors(state, target)
+	if not target then
+		return
+	end
+
+	local dir = path.dirname(target)
+	while dir and dir ~= state.root and path.is_ancestor(state.root, dir) do
+		state.expanded[dir] = true
+		dir = path.dirname(dir)
 	end
 end
 
@@ -149,11 +171,7 @@ local function refresh_git_status(state)
 end
 
 local function reveal_path(state, target)
-	local dir = path.dirname(target)
-	while dir and dir ~= state.root and path.is_ancestor(state.root, dir) do
-		state.expanded[dir] = true
-		dir = path.dirname(dir)
-	end
+	expand_ancestors(state, target)
 	state.focus_path = target
 	refresh(state)
 end
@@ -323,6 +341,7 @@ local function save_changes(state)
 	for expanded_path in pairs(edited_expanded) do
 		state.expanded[expanded_path] = true
 	end
+	expand_ancestors(state, cursor_target_path)
 	state.focus_path = ok and cursor_target_path or nil
 	if #ops > 0 then
 		refresh_without_undo(state)
