@@ -341,6 +341,31 @@ describe("etoile.renderer", function()
 		assert.are.same("/tmp/project/package.json", lines[3].id)
 	end)
 
+	it("keeps the source path for renamed entries with an existing id", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "/tmp/project/base.md",
+				path = "/tmp/project/base.md",
+				name = "base.md",
+				type = "file",
+				decoration = { { "F ", "FileIcon" } },
+				name_col = 0,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "base.md" })
+		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "renamed.md" })
+
+		local entry = renderer.entry_at_line(1, 1, renderer.entries_by_id(entries), mark_ids)
+
+		assert.are.same("renamed.md", entry.name)
+		assert.are.same("/tmp/project/base.md", entry.path)
+		assert.are.same("/tmp/project/base.md", entry.source_path)
+		assert.is_false(entry.searchable)
+	end)
+
 	it("repairs ids after undo restores a deleted directory line with the next line id", function()
 		local renderer = require("etoile.renderer")
 		local entries = {

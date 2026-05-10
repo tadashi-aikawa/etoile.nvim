@@ -7,6 +7,9 @@ local buffer_lines
 local cursor
 local rendered_entries
 local set_cursors
+local current_entry
+local preview_open
+local preview_calls
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -36,6 +39,9 @@ local function reset_vim()
 		},
 	}
 	set_cursors = {}
+	current_entry = nil
+	preview_open = false
+	preview_calls = {}
 
 	_G.vim = {
 		o = {
@@ -188,7 +194,13 @@ local function reset_vim()
 	package.loaded["etoile.preview"] = {
 		close = function() end,
 		is_open = function()
-			return false
+			return preview_open
+		end,
+		clear = function(_, title)
+			table.insert(preview_calls, { type = "clear", title = title })
+		end,
+		sync = function(_, file_path, entry_type)
+			table.insert(preview_calls, { type = "sync", path = file_path, entry_type = entry_type })
 		end,
 	}
 	package.loaded["etoile.renderer"] = {
@@ -223,6 +235,9 @@ local function reset_vim()
 			return result
 		end,
 		entry_at_line = function(_, _, entries_by_id, mark_ids)
+			if current_entry then
+				return current_entry
+			end
 			return entries_by_id[mark_ids[1]]
 		end,
 	}
@@ -286,5 +301,40 @@ describe("etoile", function()
 		autocmds.BufWriteCmd.callback()
 
 		assert.are.same({ 4, 0 }, set_cursors[#set_cursors])
+	end)
+
+	it("keeps preview content for renamed copied entries with an existing source", function()
+		open_etoile()
+		preview_open = true
+		current_entry = {
+			name = "renamed.md",
+			path = "/tmp/project/base.md",
+			source_path = "/tmp/project/base.md",
+			type = "file",
+			searchable = false,
+		}
+
+		autocmds.CursorMoved.callback()
+
+		assert.are.same({
+			{ type = "sync", path = "/tmp/project/base.md", entry_type = "file" },
+		}, preview_calls)
+	end)
+
+	it("clears preview for new unsaved entries without an existing source", function()
+		open_etoile()
+		preview_open = true
+		current_entry = {
+			name = "new.md",
+			path = "new.md",
+			type = "file",
+			searchable = false,
+		}
+
+		autocmds.CursorMoved.callback()
+
+		assert.are.same({
+			{ type = "clear", title = "new.md" },
+		}, preview_calls)
 	end)
 end)

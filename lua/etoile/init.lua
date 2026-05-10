@@ -387,7 +387,11 @@ local function open_preview(state)
 		return
 	end
 	if entry.searchable == false then
-		preview.clear(state, entry.name)
+		if entry.source_path then
+			preview.open(state, entry.source_path, entry.type)
+		else
+			preview.clear(state, entry.name)
+		end
 		return
 	end
 	preview.open(state, entry.path, entry.type)
@@ -415,7 +419,11 @@ local function sync_preview(state)
 		return
 	end
 	if entry.searchable == false then
-		preview.clear(state, entry.name)
+		if entry.source_path then
+			preview.sync(state, entry.source_path, entry.type)
+		else
+			preview.clear(state, entry.name)
+		end
 		return
 	end
 	preview.sync(state, entry.path, entry.type)

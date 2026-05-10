@@ -176,6 +176,7 @@ local function entry_for_current_line(parsed, entry)
 	copy.type = entry and entry.type == "directory" and "directory" or parsed.type
 	copy.symlink = false
 	copy.path = (entry and entry.path) or parsed.name
+	copy.source_path = entry and entry.path or nil
 	copy.name_col = parsed.name_col
 	copy.searchable = false
 
