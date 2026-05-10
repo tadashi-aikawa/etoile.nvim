@@ -41,6 +41,9 @@ local defaults = {
 	},
 	keymaps = {
 		open = "<CR>",
+		open_split = "<C-x>",
+		open_vsplit = "<C-v>",
+		open_tab = "<C-t>",
 		parent = "-",
 		child = "<C-]>",
 		preview = "<C-p>",

@@ -201,6 +201,9 @@ require("etoile").setup({
   },
   keymaps = {
     open = "<CR>",
+    open_split = "<C-x>",
+    open_vsplit = "<C-v>",
+    open_tab = "<C-t>",
     parent = "-",
     child = "<C-]>",
     preview = "<C-p>",
@@ -278,6 +281,8 @@ Directory preview is enabled by default and limited to `preview.directory.max_de
 ### keymaps
 
 All configurable mappings are buffer-local. `focus_toggle` switches between the tree window and preview buffer. `focus_preview` is mapped in the tree buffer, and `focus_tree` is mapped in the preview buffer.
+
+`open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
 
 `<C-o>` and `<C-i>` are always mapped internally to keep jump navigation from accidentally replacing the etoile window with another buffer.
 

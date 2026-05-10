@@ -238,7 +238,7 @@ local function update_search_state(state)
 	}
 end
 
-local function open_entry(state)
+local function open_entry(state, command)
 	local entry = entry_at_cursor(state)
 	if not entry then
 		return
@@ -259,7 +259,7 @@ local function open_entry(state)
 	if valid_win(source) then
 		vim.api.nvim_set_current_win(source)
 	end
-	vim.cmd.edit(vim.fn.fnameescape(entry.path))
+	vim.cmd((command or "edit") .. " " .. vim.fn.fnameescape(entry.path))
 end
 
 local function sync_open_preview(state)
@@ -518,6 +518,15 @@ local function setup_buffer(state)
 	map(state.buf, keys.open, function()
 		open_entry(state)
 	end, "Open etoile entry")
+	map(state.buf, keys.open_split, function()
+		open_entry(state, "split")
+	end, "Open etoile entry in horizontal split")
+	map(state.buf, keys.open_vsplit, function()
+		open_entry(state, "vsplit")
+	end, "Open etoile entry in vertical split")
+	map(state.buf, keys.open_tab, function()
+		open_entry(state, "tabedit")
+	end, "Open etoile entry in new tab")
 	map(state.buf, keys.parent, function()
 		parent_root(state)
 	end, "Move etoile root to parent")
