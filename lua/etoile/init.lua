@@ -121,7 +121,9 @@ local function refresh(state)
 		vim.api.nvim_win_set_config(state.win, float_config(state))
 		vim.wo[state.win].number = true
 		vim.wo[state.win].relativenumber = false
-		set_cursor_to_path(state, state.focus_path)
+		local focus_path = state.focus_path
+		state.focus_path = nil
+		set_cursor_to_path(state, focus_path)
 	end
 end
 
