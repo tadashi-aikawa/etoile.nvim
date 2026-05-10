@@ -243,6 +243,20 @@ function M.expanded_paths(root, lines)
 	return expanded
 end
 
+function M.path_at_line(root, lines, line)
+	if not line then
+		return nil
+	end
+
+	for _, parsed in ipairs(normalize_parsed_tree(root, parse_lines(lines))) do
+		if parsed.source_index == line then
+			return parsed.path
+		end
+	end
+
+	return nil
+end
+
 function M.filter_redundant_ops(ops)
 	local moves = {}
 	local copies = {}

@@ -76,6 +76,36 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("resolves the path represented by a new cursor line", function()
+		local target = editor.path_at_line("/tmp/project", {
+			"aaa.md",
+			"bbb.md",
+			"ddd.md",
+			"ccc.md",
+		}, 3)
+
+		assert.are.equal("/tmp/project/ddd.md", target)
+	end)
+
+	it("resolves nested paths represented by a cursor line", function()
+		local target = editor.path_at_line("/tmp/project", {
+			"docs",
+			"  guide.md",
+		}, 2)
+
+		assert.are.equal("/tmp/project/docs/guide.md", target)
+	end)
+
+	it("returns nil when the cursor line does not represent a path", function()
+		local target = editor.path_at_line("/tmp/project", {
+			"aaa.md",
+			"",
+			"bbb.md",
+		}, 2)
+
+		assert.is_nil(target)
+	end)
+
 	it("detects renamed files", function()
 		local entries = {
 			{ path = "/tmp/project/old.lua", name = "old.lua", type = "file" },

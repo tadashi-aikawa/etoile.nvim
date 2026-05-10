@@ -2,6 +2,11 @@ local keymaps
 local commands
 local current_win
 local closed_wins
+local autocmds
+local buffer_lines
+local cursor
+local rendered_entries
+local set_cursors
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -19,6 +24,18 @@ local function reset_vim()
 	commands = {}
 	current_win = 10
 	closed_wins = {}
+	autocmds = {}
+	buffer_lines = { "file.lua" }
+	cursor = { 1, 0 }
+	rendered_entries = {
+		{
+			id = "/tmp/project/file.lua",
+			path = "/tmp/project/file.lua",
+			name = "file.lua",
+			type = "file",
+		},
+	}
+	set_cursors = {}
 
 	_G.vim = {
 		o = {
@@ -42,6 +59,13 @@ local function reset_vim()
 				end
 			end
 			return base
+		end,
+		tbl_map = function(callback, items)
+			local result = {}
+			for index, item in ipairs(items) do
+				result[index] = callback(item)
+			end
+			return result
 		end,
 		fn = {
 			fnamemodify = function(path)
@@ -72,9 +96,17 @@ local function reset_vim()
 			nvim_create_buf = function()
 				return 1
 			end,
+			nvim_get_option_value = function()
+				return 1000
+			end,
 			nvim_set_option_value = function() end,
 			nvim_buf_set_name = function() end,
-			nvim_buf_set_lines = function() end,
+			nvim_buf_set_lines = function(_, _, _, _, lines)
+				buffer_lines = deepcopy(lines)
+			end,
+			nvim_buf_get_lines = function()
+				return deepcopy(buffer_lines)
+			end,
 			nvim_open_win = function()
 				return 20
 			end,
@@ -88,13 +120,25 @@ local function reset_vim()
 				current_win = win
 			end,
 			nvim_win_get_cursor = function()
-				return { 1, 0 }
+				return deepcopy(cursor)
 			end,
-			nvim_win_set_cursor = function() end,
+			nvim_win_set_cursor = function(_, value)
+				cursor = deepcopy(value)
+				table.insert(set_cursors, deepcopy(value))
+			end,
 			nvim_win_get_position = function()
 				return { 0, 0 }
 			end,
-			nvim_create_autocmd = function() end,
+			nvim_win_set_config = function() end,
+			nvim_create_autocmd = function(event, opts)
+				if type(event) == "table" then
+					for _, item in ipairs(event) do
+						autocmds[item] = opts
+					end
+				else
+					autocmds[event] = opts
+				end
+			end,
 		},
 		keymap = {
 			set = function(mode, lhs, rhs, opts)
@@ -125,6 +169,21 @@ local function reset_vim()
 		snapshot = function(entries)
 			return entries
 		end,
+		path_at_line = function(root, lines, line)
+			local raw = lines[line] and lines[line].line
+			return raw and (root .. "/" .. raw:match("%S+")) or nil
+		end,
+		expanded_paths = function()
+			return {}
+		end,
+		diff = function()
+			return {
+				{ type = "create", path = "/tmp/project/ddd.md", entry_type = "file" },
+			}
+		end,
+		apply = function()
+			return true, nil
+		end,
 	}
 	package.loaded["etoile.preview"] = {
 		close = function() end,
@@ -134,27 +193,34 @@ local function reset_vim()
 	}
 	package.loaded["etoile.renderer"] = {
 		render = function()
-			local entry = {
-				id = "/tmp/project/file.lua",
-				path = "/tmp/project/file.lua",
-				name = "file.lua",
-				type = "file",
-			}
 			return {
-				lines = { "file.lua" },
-				entries = { entry },
+				lines = vim.tbl_map(function(entry)
+					return entry.name
+				end, rendered_entries),
+				entries = rendered_entries,
 				max_width = 8,
 			}
 		end,
 		entries_by_id = function(entries)
-			return {
-				[entries[1].id] = entries[1],
-			}
+			local result = {}
+			for _, entry in ipairs(entries) do
+				result[entry.id] = entry
+			end
+			return result
 		end,
 		decorate = function()
-			return {
-				[1] = "/tmp/project/file.lua",
-			}
+			local mark_ids = {}
+			for index, entry in ipairs(rendered_entries) do
+				mark_ids[index] = entry.id
+			end
+			return mark_ids
+		end,
+		lines_with_ids = function()
+			local result = {}
+			for _, line in ipairs(buffer_lines) do
+				table.insert(result, { line = line })
+			end
+			return result
 		end,
 		entry_at_line = function(_, _, entries_by_id, mark_ids)
 			return entries_by_id[mark_ids[1]]
@@ -199,5 +265,26 @@ describe("etoile", function()
 			"vsplit /tmp/project/file.lua",
 			"tabedit /tmp/project/file.lua",
 		}, commands)
+	end)
+
+	it("moves the cursor to the saved path when the current line is sorted elsewhere", function()
+		rendered_entries = {
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+			{ id = "/tmp/project/bbb.md", path = "/tmp/project/bbb.md", name = "bbb.md", type = "file" },
+			{ id = "/tmp/project/ccc.md", path = "/tmp/project/ccc.md", name = "ccc.md", type = "file" },
+		}
+		open_etoile()
+		buffer_lines = { "aaa.md", "bbb.md", "ddd.md", "ccc.md" }
+		cursor = { 3, 0 }
+		rendered_entries = {
+			{ id = "/tmp/project/aaa.md", path = "/tmp/project/aaa.md", name = "aaa.md", type = "file" },
+			{ id = "/tmp/project/bbb.md", path = "/tmp/project/bbb.md", name = "bbb.md", type = "file" },
+			{ id = "/tmp/project/ccc.md", path = "/tmp/project/ccc.md", name = "ccc.md", type = "file" },
+			{ id = "/tmp/project/ddd.md", path = "/tmp/project/ddd.md", name = "ddd.md", type = "file" },
+		}
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({ 4, 0 }, set_cursors[#set_cursors])
 	end)
 end)

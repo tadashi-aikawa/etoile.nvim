@@ -298,6 +298,8 @@ end
 
 local function save_changes(state)
 	local lines = renderer.lines_with_ids(state.buf, state.mark_ids)
+	local cursor_line = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or nil
+	local cursor_target_path = editor.path_at_line(state.root, lines, cursor_line)
 	local edited_expanded = editor.expanded_paths(state.root, lines)
 	local ops = editor.diff(state.root, state.snapshot, lines)
 	local ok, err = editor.apply(ops, {
@@ -321,6 +323,7 @@ local function save_changes(state)
 	for expanded_path in pairs(edited_expanded) do
 		state.expanded[expanded_path] = true
 	end
+	state.focus_path = ok and cursor_target_path or nil
 	if #ops > 0 then
 		refresh_without_undo(state)
 	else
