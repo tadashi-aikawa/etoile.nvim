@@ -142,7 +142,7 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
 
 ### Search
 
-検索は path-based で、query は空白区切りの term に分割される。root からの相対 path にすべての term が含まれる entry がマッチする。ディレクトリは最後の query component がディレクトリ名にマッチする場合に結果へ含まれる。
+検索は path-based で、query は空白区切りの term に分割される。root からの相対 path にすべての term が含まれ、最後の query component が entry 名にマッチする場合に結果へ含まれる。
 
 マッチした entry は highlight され、結果 index が注釈として表示される。デフォルトでは、すべてのマッチの親ディレクトリを自動展開する。
 

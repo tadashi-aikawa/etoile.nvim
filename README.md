@@ -146,7 +146,7 @@ Saving a file from the preview buffer refreshes the main tree's Git status displ
 
 ### Search
 
-Search is path-based and splits the query into whitespace-separated terms. All terms must match the root-relative path. Directory matches are shown when the last query component matches the directory name.
+Search is path-based and splits the query into whitespace-separated terms. All terms must match the root-relative path, and matches are shown when the last query component matches the entry name.
 
 Matched entries are highlighted and annotated with their result index. By default, parent directories for all matches are expanded automatically.
 

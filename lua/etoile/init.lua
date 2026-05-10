@@ -216,10 +216,6 @@ local function entry_matches_search(entry, root, terms)
 		return false
 	end
 
-	if entry.type ~= "directory" then
-		return true
-	end
-
 	local last_term = last_path_component(terms[#terms])
 	return entry.name:lower():find(last_term, 1, true) ~= nil
 end
@@ -231,7 +227,8 @@ local function collect_search_matches(root, terms)
 		for _, entry in ipairs(scanner.list_dir(dir, { root = root, exclude = config.options.search.exclude })) do
 			if entry_matches_search(entry, root, terms) then
 				table.insert(matches, entry.path)
-			elseif entry.type == "directory" and not entry.symlink then
+			end
+			if entry.type == "directory" and not entry.symlink then
 				visit(entry.path)
 			end
 		end

@@ -11,6 +11,8 @@ local current_entry
 local preview_open
 local preview_calls
 local last_render_expanded
+local input_value
+local last_search
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -44,6 +46,8 @@ local function reset_vim()
 	preview_open = false
 	preview_calls = {}
 	last_render_expanded = nil
+	input_value = ""
+	last_search = nil
 
 	_G.vim = {
 		o = {
@@ -81,6 +85,9 @@ local function reset_vim()
 			end,
 			fnameescape = function(path)
 				return path:gsub(" ", "\\ ")
+			end,
+			input = function()
+				return input_value
 			end,
 			getcwd = function()
 				return "/tmp/project"
@@ -223,7 +230,8 @@ local function reset_vim()
 			end
 			return result
 		end,
-		decorate = function()
+		decorate = function(_, _, search)
+			last_search = search
 			local mark_ids = {}
 			for index, entry in ipairs(rendered_entries) do
 				mark_ids[index] = entry.id
@@ -242,6 +250,11 @@ local function reset_vim()
 				return current_entry
 			end
 			return entries_by_id[mark_ids[1]]
+		end,
+	}
+	package.loaded["etoile.scanner"] = {
+		list_dir = function()
+			return {}
 		end,
 	}
 end
@@ -385,5 +398,36 @@ describe("etoile", function()
 		assert.are.same({
 			{ type = "clear", title = "new.md" },
 		}, preview_calls)
+	end)
+
+	it("continues searching inside matched directories", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/dir/ccc.c", path = "/tmp/project/dir/ccc.c", name = "ccc.c", type = "file" },
+			{ id = "/tmp/project/dir/ddd.d", path = "/tmp/project/dir/ddd.d", name = "ddd.d", type = "file" },
+		}
+		package.loaded["etoile.scanner"].list_dir = function(dir)
+			if dir == "/tmp/project" then
+				return {
+					{ path = "/tmp/project/dir", name = "dir", type = "directory" },
+				}
+			end
+			if dir == "/tmp/project/dir" then
+				return {
+					{ path = "/tmp/project/dir/ccc.c", name = "ccc.c", type = "file" },
+					{ path = "/tmp/project/dir/ddd.d", name = "ddd.d", type = "file" },
+				}
+			end
+			return {}
+		end
+		input_value = "d"
+		open_etoile()
+
+		keymaps["<leader>s"].rhs()
+
+		assert.are.equal(2, last_search.total)
+		assert.is_true(last_search.matches_by_path["/tmp/project/dir"])
+		assert.is_true(last_search.matches_by_path["/tmp/project/dir/ddd.d"])
+		assert.is_nil(last_search.matches_by_path["/tmp/project/dir/ccc.c"])
 	end)
 end)
