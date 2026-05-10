@@ -270,6 +270,25 @@ local function search_highlight_for(entry, search)
 	return nil
 end
 
+local function highlight_search_name(buf, line, entry, search)
+	local hl = search_highlight_for(entry, search)
+	if not hl then
+		return
+	end
+
+	local start_col = entry.name_col or 0
+	local end_col = start_col + #(entry.name or "")
+	if end_col <= start_col then
+		return
+	end
+
+	vim.api.nvim_buf_set_extmark(buf, M.decor_ns, line, start_col, {
+		end_col = end_col,
+		hl_group = hl,
+		priority = 50,
+	})
+end
+
 local function search_index_decoration_for(entry, search)
 	if not search or not search.match_index_by_path or not search.total then
 		return nil
@@ -298,13 +317,7 @@ function M.reset_decorations(buf, entries, search, create_ids)
 			mark_ids[mark_id] = entry.id
 		end
 
-		local search_hl = search_highlight_for(entry, search)
-		if search_hl then
-			vim.api.nvim_buf_set_extmark(buf, M.decor_ns, line, 0, {
-				line_hl_group = search_hl,
-				priority = 50,
-			})
-		end
+		highlight_search_name(buf, line, entry, search)
 		local search_index_decoration = search_index_decoration_for(entry, search)
 		if search_index_decoration then
 			vim.api.nvim_buf_set_extmark(buf, M.decor_ns, line, 0, {
@@ -560,12 +573,8 @@ function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, curren
 		end
 
 		entry = entry_for_current_line(item, entry_id and entries_by_id[entry_id] or nil)
-		local search_hl = entry.searchable and search_highlight_for(entry, search) or nil
-		if search_hl then
-			vim.api.nvim_buf_set_extmark(buf, M.decor_ns, item.line - 1, 0, {
-				line_hl_group = search_hl,
-				priority = 50,
-			})
+		if entry.searchable then
+			highlight_search_name(buf, item.line - 1, entry, search)
 		end
 		local search_index_decoration = entry.searchable and search_index_decoration_for(entry, search) or nil
 		if search_index_decoration then

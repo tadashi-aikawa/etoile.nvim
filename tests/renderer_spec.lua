@@ -173,6 +173,16 @@ describe("etoile.renderer", function()
 		assert.are.same({ default = true, fg = "#98C379" }, highlights.EtoileGitAdded)
 	end)
 
+	it("sets visible search highlight styles", function()
+		local renderer = require("etoile.renderer")
+
+		renderer.setup_highlights()
+
+		assert.are.same({ default = true, link = "Search" }, highlights.EtoileSearchMatch)
+		assert.are.same({ default = true, link = "IncSearch" }, highlights.EtoileSearchCurrent)
+		assert.are.same({ default = true, link = "Comment" }, highlights.EtoileSearchIndex)
+	end)
+
 	it("keeps long entry ids out of virtual text highlight groups", function()
 		local renderer = require("etoile.renderer")
 		local long_path = "/tmp/project/" .. string.rep("nested-directory/", 20) .. "fyler.lua"
@@ -242,6 +252,8 @@ describe("etoile.renderer", function()
 		})
 
 		assert.are.same({ { { " [2/3]", "EtoileSearchIndex" } } }, decorations_at(2))
+		assert.are.same({ { col = 0, end_col = #"alpha.lua", hl_group = "EtoileSearchMatch" } }, highlights_at(1))
+		assert.are.same({ { col = 0, end_col = #"beta.lua", hl_group = "EtoileSearchCurrent" } }, highlights_at(2))
 	end)
 
 	it("attaches a copied line id by yank order and recomputes the icon from the current name", function()
