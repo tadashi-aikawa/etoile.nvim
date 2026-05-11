@@ -34,22 +34,23 @@ local function line_text(item)
 	return item or ""
 end
 
-local function line_id(item)
-	if type(item) == "table" then
-		return item.id
+local function split_id_prefix(line)
+	local before, id, rest = line:match("^(%s*)(%d%d%d%d%d%d)%s(.*)$")
+	if not id then
+		return nil, line
 	end
-	return nil
+	return id, before .. rest
 end
 
-local function line_mark_id(item)
+local function line_id(item)
 	if type(item) == "table" then
-		return item.mark_id
+		return item.id or split_id_prefix(item.line or "")
 	end
 	return nil
 end
 
 local function parse_line(item)
-	local line = line_text(item)
+	local inline_id, line = split_id_prefix(line_text(item))
 	if trim(line) == "" then
 		return nil
 	end
@@ -68,8 +69,7 @@ local function parse_line(item)
 	end
 
 	return {
-		id = line_id(item),
-		mark_id = line_mark_id(item),
+		id = line_id(item) or inline_id,
 		depth = depth,
 		name = rest,
 		explicit_directory = explicit_directory,
@@ -141,7 +141,8 @@ local function entry_type_for(entry, parsed)
 	return parsed.type
 end
 
-function M.diff(root, snapshot, lines)
+function M.diff(root, snapshot, lines, opts)
+	opts = opts or {}
 	snapshot = normalize_snapshot(snapshot or {})
 	local parsed_lines = normalize_parsed_tree(root, parse_lines(lines))
 	local refs = {}
@@ -218,7 +219,17 @@ function M.diff(root, snapshot, lines)
 	end
 
 	for _, parsed in ipairs(parsed_lines) do
-		if not parsed.id or not snapshot.by_id[parsed.id] then
+		if parsed.id and not snapshot.by_id[parsed.id] then
+			local source_path = opts.paths_by_id and opts.paths_by_id[parsed.id]
+			if source_path then
+				table.insert(ops, {
+					type = "copy",
+					from = source_path,
+					to = parsed.path,
+					entry_type = (opts.types_by_id and opts.types_by_id[parsed.id]) or parsed.type,
+				})
+			end
+		elseif not parsed.id then
 			table.insert(ops, {
 				type = "create",
 				path = parsed.path,

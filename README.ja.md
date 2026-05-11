@@ -120,7 +120,7 @@ require("etoile").open({ path = "/path/to/project" })
 
 ### ツリー編集
 
-編集対象はファイル名とディレクトリ名だけ。アイコンと Git status marker は buffer text の外側に virtual text として描画される。
+編集対象はファイル名とディレクトリ名だけ。アイコンと Git status marker は buffer text の外側に virtual text として描画される。既存 entry には行 indent の後ろに concealed な `000001` のような6桁 source id が含まれるため、通常の yank/delete 操作でも etoile root を移動した後の source identity を保持する。カーソルは編集可能なファイル名部分に補正される。この id は etoile 外へ register を paste した場合や conceal を無効化した場合に見えることがある。
 
 etoile buffer を保存すると、元のツリーと編集後ツリーの差分を適用する:
 

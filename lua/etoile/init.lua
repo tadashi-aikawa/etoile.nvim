@@ -92,7 +92,10 @@ end
 
 local function entry_at_cursor(state)
 	local line = vim.api.nvim_win_get_cursor(state.win)[1]
-	return renderer.entry_at_line(state.buf, line, state.entries_by_id or {}, state.mark_ids or {})
+	return renderer.entry_at_line(state.buf, line, state.entries_by_id or {}, {
+		paths_by_id = state.paths_by_id,
+		types_by_id = state.types_by_id,
+	})
 end
 
 local function set_cursor_to_path(state, target)
@@ -129,14 +132,37 @@ local function expand_ancestors(state, target)
 	end
 end
 
+local function id_for_path(state, entry_path)
+	local existing = state.ids_by_path[entry_path]
+	if existing then
+		return existing
+	end
+	if state.next_id > 999999 then
+		error("Etoile entry id limit exceeded")
+	end
+	local id = ("%06d"):format(state.next_id)
+	state.next_id = state.next_id + 1
+	state.ids_by_path[entry_path] = id
+	state.paths_by_id[id] = entry_path
+	return id
+end
+
 local function refresh(state)
-	state.rendered = renderer.render(state.root, state.expanded, { exclude = config.options.search.exclude })
+	state.rendered = renderer.render(state.root, state.expanded, {
+		exclude = config.options.search.exclude,
+		id_for_path = function(entry_path)
+			return id_for_path(state, entry_path)
+		end,
+	})
+	for _, entry in ipairs(state.rendered.entries) do
+		state.types_by_id[entry.id] = entry.type
+	end
 	state.snapshot = editor.snapshot(state.rendered.entries)
 	state.entries_by_id = renderer.entries_by_id(state.rendered.entries)
 	vim.api.nvim_set_option_value("modifiable", true, { buf = state.buf })
 	state.sync_suspended = true
 	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
-	state.mark_ids = renderer.decorate(state.buf, state.rendered.entries, state.search)
+	renderer.decorate(state.buf, state.rendered.entries, state.search)
 	state.sync_suspended = false
 	vim.api.nvim_set_option_value("modified", false, { buf = state.buf })
 
@@ -144,6 +170,8 @@ local function refresh(state)
 		vim.api.nvim_win_set_config(state.win, tree_config(state))
 		vim.wo[state.win].number = true
 		vim.wo[state.win].relativenumber = false
+		vim.wo[state.win].conceallevel = 2
+		vim.wo[state.win].concealcursor = "nvic"
 		local focus_path = state.focus_path
 		state.focus_path = nil
 		set_cursor_to_path(state, focus_path)
@@ -165,7 +193,7 @@ local function refresh_git_status(state)
 		return
 	end
 	renderer.refresh_git_status(state.root, state.rendered)
-	renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+	renderer.reset_decorations(state.buf, state.rendered.entries, state.search)
 	if valid_win(state.win) then
 		vim.api.nvim_win_set_config(state.win, tree_config(state))
 	end
@@ -313,11 +341,14 @@ local function child_root(state)
 end
 
 local function save_changes(state)
-	local lines = renderer.lines_with_ids(state.buf, state.mark_ids)
+	local lines = renderer.lines_with_ids(state.buf)
 	local cursor_line = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or nil
 	local cursor_target_path = editor.path_at_line(state.root, lines, cursor_line)
 	local edited_expanded = editor.expanded_paths(state.root, lines)
-	local ops = editor.diff(state.root, state.snapshot, lines)
+	local ops = editor.diff(state.root, state.snapshot, lines, {
+		paths_by_id = state.paths_by_id,
+		types_by_id = state.types_by_id,
+	})
 	local ok, err = editor.apply(ops, {
 		confirm_delete = config.options.confirm.delete,
 		confirm_move = config.options.confirm.move,
@@ -366,7 +397,7 @@ local function search(state)
 
 	if #state.search_matches == 0 then
 		vim.notify("No etoile search results: " .. query, vim.log.levels.INFO)
-		renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+		renderer.reset_decorations(state.buf, state.rendered.entries, state.search)
 		return
 	end
 
@@ -386,7 +417,7 @@ local function search_clear(state)
 	state.search_matches = {}
 	state.search_index = 0
 	state.search = nil
-	renderer.reset_decorations(state.buf, state.rendered.entries, state.search, false)
+	renderer.reset_decorations(state.buf, state.rendered.entries, state.search)
 end
 
 local function search_move(state, delta)
@@ -492,42 +523,40 @@ local function sync_decorations(state)
 		return
 	end
 	local current_line = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or nil
-	renderer.sync_decorations(
-		state.buf,
-		state.entries_by_id or {},
-		state.mark_ids or {},
-		state.search,
-		state.yanked,
-		current_line
-	)
-	state.yanked = nil
+	state.sync_suspended = true
+	local ok, err = pcall(renderer.sync_decorations, state.buf, state.entries_by_id or {}, state.search, current_line, {
+		paths_by_id = state.paths_by_id,
+		types_by_id = state.types_by_id,
+	})
+	state.sync_suspended = false
+	if not ok then
+		error(err)
+	end
 	sync_preview(state)
 end
 
-local function capture_yank(state)
-	local event = vim.v.event or {}
-	if event.operator ~= "y" or not event.regcontents then
+local function editable_col(state, line)
+	local rows = renderer.lines_with_ids(state.buf)
+	local item = rows[line]
+	if not item or type(item.line) ~= "string" then
+		return nil
+	end
+	local before, id = item.line:match("^(%s*)(%d%d%d%d%d%d)%s")
+	if not id then
+		return nil
+	end
+	return #before + 7
+end
+
+local function keep_cursor_in_name(state)
+	if not valid_win(state.win) then
 		return
 	end
-
-	local start_line = vim.fn.getpos("'[")[2]
-	local end_line = vim.fn.getpos("']")[2]
-	if start_line <= 0 or end_line < start_line then
-		return
+	local cursor = vim.api.nvim_win_get_cursor(state.win)
+	local min_col = editable_col(state, cursor[1])
+	if min_col and cursor[2] < min_col then
+		pcall(vim.api.nvim_win_set_cursor, state.win, { cursor[1], min_col })
 	end
-
-	local ids_by_line = renderer.ids_by_line(state.buf, state.mark_ids or {})
-	local yanked = {}
-	for line = start_line, end_line do
-		local id = ids_by_line[line]
-		if id then
-			table.insert(yanked, {
-				id = id,
-				line = event.regcontents[line - start_line + 1],
-			})
-		end
-	end
-	state.yanked = #yanked > 0 and yanked or nil
 end
 
 local function setup_buffer(state)
@@ -609,14 +638,15 @@ local function setup_buffer(state)
 	vim.api.nvim_create_autocmd("CursorMoved", {
 		buffer = state.buf,
 		callback = function()
+			keep_cursor_in_name(state)
 			schedule_sync_preview(state)
 		end,
 	})
 
-	vim.api.nvim_create_autocmd("TextYankPost", {
+	vim.api.nvim_create_autocmd({ "CursorMovedI", "InsertEnter" }, {
 		buffer = state.buf,
 		callback = function()
-			capture_yank(state)
+			keep_cursor_in_name(state)
 		end,
 	})
 end
@@ -630,6 +660,10 @@ function M.open(opts)
 	local state = {
 		root = resolve_root(opts.path),
 		expanded = {},
+		next_id = 1,
+		ids_by_path = {},
+		paths_by_id = {},
+		types_by_id = {},
 		source_win = vim.api.nvim_get_current_win(),
 		search_matches = {},
 		search_index = 0,
@@ -647,18 +681,28 @@ function M.open(opts)
 	end
 
 	expand_to_current(state)
-	state.rendered = renderer.render(state.root, state.expanded, { exclude = config.options.search.exclude })
+	state.rendered = renderer.render(state.root, state.expanded, {
+		exclude = config.options.search.exclude,
+		id_for_path = function(entry_path)
+			return id_for_path(state, entry_path)
+		end,
+	})
+	for _, entry in ipairs(state.rendered.entries) do
+		state.types_by_id[entry.id] = entry.type
+	end
 	state.snapshot = editor.snapshot(state.rendered.entries)
 	state.entries_by_id = renderer.entries_by_id(state.rendered.entries)
 	state.buf = vim.api.nvim_create_buf(false, true)
 	setup_buffer(state)
 	state.sync_suspended = true
 	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
-	state.mark_ids = renderer.decorate(state.buf, state.rendered.entries, state.search)
+	renderer.decorate(state.buf, state.rendered.entries, state.search)
 	state.sync_suspended = false
 	state.win = vim.api.nvim_open_win(state.buf, true, tree_config(state))
 	vim.wo[state.win].number = true
 	vim.wo[state.win].relativenumber = false
+	vim.wo[state.win].conceallevel = 2
+	vim.wo[state.win].concealcursor = "nvic"
 	set_cursor_to_path(state, state.focus_path)
 	if config.options.preview.enabled then
 		open_preview(state)

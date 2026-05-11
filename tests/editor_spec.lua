@@ -119,6 +119,56 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("copies a pasted line from the concealed numeric id when the source is outside the current snapshot", function()
+		local ops = editor.diff(
+			"/tmp/project",
+			snapshot({
+				{ id = "000002", path = "/tmp/project/existing.lua", name = "existing.lua", type = "file" },
+			}),
+			{
+				{ line = "000001 copied.lua" },
+				{ line = "000002 existing.lua" },
+			},
+			{
+				paths_by_id = {
+					["000001"] = "/tmp/other/base.lua",
+					["000002"] = "/tmp/project/existing.lua",
+				},
+			}
+		)
+
+		assert.are.same({
+			{ type = "copy", from = "/tmp/other/base.lua", to = "/tmp/project/copied.lua", entry_type = "file" },
+		}, ops)
+	end)
+
+	it("keeps the source type when copying a collapsed directory from outside the current snapshot", function()
+		local ops = editor.diff(
+			"/tmp/project",
+			snapshot({
+				{ id = "000025", path = "/tmp/project/dir8", name = "dir8", type = "directory" },
+			}),
+			{
+				{ line = "000025 dir8" },
+				{ line = "000030 dir9" },
+			},
+			{
+				paths_by_id = {
+					["000025"] = "/tmp/project/dir8",
+					["000030"] = "/tmp/project/dir8/dir9",
+				},
+				types_by_id = {
+					["000025"] = "directory",
+					["000030"] = "directory",
+				},
+			}
+		)
+
+		assert.are.same({
+			{ type = "copy", from = "/tmp/project/dir8/dir9", to = "/tmp/project/dir9", entry_type = "directory" },
+		}, ops)
+	end)
+
 	it("detects moves by indentation under a directory", function()
 		local entries = {
 			{ path = "/tmp/project/src", name = "src", type = "directory" },
@@ -126,8 +176,8 @@ describe("etoile.editor", function()
 		}
 
 		local ops = editor.diff("/tmp/project", snapshot(entries), {
-			{ line = "src", id = "/tmp/project/src" },
-			{ line = "  main.lua", id = "/tmp/project/main.lua" },
+			{ line = "000001 src", id = "/tmp/project/src" },
+			{ line = "  000002 main.lua", id = "/tmp/project/main.lua" },
 		})
 
 		assert.are.same({
@@ -480,6 +530,32 @@ describe("etoile.editor", function()
 
 		assert.are.same({
 			{ type = "copy", from = "/tmp/project/base.md", to = "/tmp/project/copy.md", entry_type = "file" },
+		}, ops)
+	end)
+
+	it("treats repeated puts of the same inline id as copies from the original source", function()
+		local ops = editor.diff(
+			"/tmp/project",
+			snapshot({
+				{
+					id = "000001",
+					path = "/tmp/project/minerva-face-right.webp",
+					name = "minerva-face-right.webp",
+					type = "file",
+				},
+				{ id = "000002", path = "/tmp/project/minerva.png", name = "minerva.png", type = "file" },
+			}),
+			{
+				"000002 minerva1.png",
+				"000002 minerva2.png",
+				"000001 minerva-face-right.webp",
+				"000002 minerva.png",
+			}
+		)
+
+		assert.are.same({
+			{ type = "copy", from = "/tmp/project/minerva.png", to = "/tmp/project/minerva1.png", entry_type = "file" },
+			{ type = "copy", from = "/tmp/project/minerva.png", to = "/tmp/project/minerva2.png", entry_type = "file" },
 		}, ops)
 	end)
 

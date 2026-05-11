@@ -236,11 +236,16 @@ local function reset_vim()
 		end,
 	}
 	package.loaded["etoile.renderer"] = {
-		render = function(_, expanded)
+		render = function(_, expanded, opts)
 			last_render_expanded = deepcopy(expanded or {})
+			if opts and opts.id_for_path then
+				for _, entry in ipairs(rendered_entries) do
+					entry.id = opts.id_for_path(entry.path)
+				end
+			end
 			return {
 				lines = vim.tbl_map(function(entry)
-					return entry.name
+					return string.rep(" ", (entry.depth or 0) * 2) .. entry.id .. " " .. entry.name
 				end, rendered_entries),
 				entries = rendered_entries,
 				max_width = 8,
@@ -255,24 +260,22 @@ local function reset_vim()
 		end,
 		decorate = function(_, _, search)
 			last_search = search
-			local mark_ids = {}
-			for index, entry in ipairs(rendered_entries) do
-				mark_ids[index] = entry.id
-			end
-			return mark_ids
 		end,
 		lines_with_ids = function()
 			local result = {}
 			for _, line in ipairs(buffer_lines) do
-				table.insert(result, { line = line })
+				local id = line:match("^%s*(%d%d%d%d%d%d)%s")
+				table.insert(result, { line = line, id = id })
 			end
 			return result
 		end,
-		entry_at_line = function(_, _, entries_by_id, mark_ids)
+		sync_decorations = function() end,
+		entry_at_line = function(_, line, entries_by_id)
 			if current_entry then
 				return current_entry
 			end
-			return entries_by_id[mark_ids[1]]
+			local id = buffer_lines[line or 1] and buffer_lines[line or 1]:match("^%s*(%d%d%d%d%d%d)%s")
+			return id and entries_by_id[id] or nil
 		end,
 	}
 	package.loaded["etoile.scanner"] = {
@@ -470,6 +473,34 @@ describe("etoile", function()
 		assert.are.same({
 			{ type = "clear", title = "new.md" },
 		}, preview_calls)
+	end)
+
+	it("keeps the cursor out of the concealed id prefix", function()
+		open_etoile()
+		cursor = { 1, 0 }
+
+		autocmds.CursorMoved.callback()
+
+		assert.are.same({ 1, 7 }, set_cursors[#set_cursors])
+	end)
+
+	it("keeps the cursor out of an indented concealed id prefix", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory", depth = 0 },
+			{
+				id = "/tmp/project/dir/child.md",
+				path = "/tmp/project/dir/child.md",
+				name = "child.md",
+				type = "file",
+				depth = 1,
+			},
+		}
+		open_etoile()
+		cursor = { 2, 3 }
+
+		autocmds.CursorMoved.callback()
+
+		assert.are.same({ 2, 9 }, set_cursors[#set_cursors])
 	end)
 
 	it("continues searching inside matched directories", function()
