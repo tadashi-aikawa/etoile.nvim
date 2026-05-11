@@ -121,6 +121,7 @@ require("etoile").open({ path = "/path/to/project" })
 ### Editing the Tree
 
 Only file and directory names are editable. Icons and Git status markers are rendered as virtual text outside the buffer text.
+Existing entry lines include a concealed six-digit source id such as `000001` after the line indentation, so native yank/delete operations keep source identity even after moving the etoile root. The cursor is kept on the editable name portion, and the id may be visible outside etoile or when conceal is disabled.
 
 Saving the etoile buffer applies the difference between the original tree and the edited tree:
 

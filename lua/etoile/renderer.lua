@@ -5,8 +5,23 @@ local scanner = require("etoile.scanner")
 
 local M = {}
 
-M.id_ns = vim.api.nvim_create_namespace("etoile_id")
 M.decor_ns = vim.api.nvim_create_namespace("etoile_decor")
+
+local id_width = 6
+local id_prefix_width = id_width + 1
+
+local function split_id_prefix(line)
+	local before, id, rest = line:match("^(%s*)(%d%d%d%d%d%d)%s(.*)$")
+	if not id then
+		return nil, line, nil, 0
+	end
+	return id, before .. rest, #before, id_prefix_width
+end
+
+function M.line_with_id(id, line)
+	local indent = line:match("^%s*") or ""
+	return indent .. id .. " " .. line:sub(#indent + 1)
+end
 
 local function display_width(line)
 	if vim and vim.fn and vim.fn.strdisplaywidth then
@@ -23,11 +38,15 @@ local function virt_text_width(chunks)
 	return width
 end
 
-local function set_id_extmark(buf, line)
-	return vim.api.nvim_buf_set_extmark(buf, M.id_ns, line, 0, {
-		right_gravity = false,
-		invalidate = true,
-		undo_restore = true,
+local function conceal_id_prefix(buf, line, prefix_col, prefix_len)
+	if not prefix_len or prefix_len <= 0 then
+		return
+	end
+	prefix_col = prefix_col or 0
+	vim.api.nvim_buf_set_extmark(buf, M.decor_ns, line, prefix_col, {
+		end_col = prefix_col + prefix_len,
+		conceal = "",
+		priority = 120,
 	})
 end
 
@@ -112,7 +131,8 @@ local function leading_spaces(value)
 end
 
 local function parse_line(value)
-	local name = trim(value)
+	local inline_id, text, prefix_col, prefix_len = split_id_prefix(value)
+	local name = trim(text)
 	if name == "" then
 		return nil
 	end
@@ -126,9 +146,13 @@ local function parse_line(value)
 	end
 
 	return {
+		id = inline_id,
 		name = name,
-		depth = math.floor(#leading_spaces(value) / config.options.indent),
-		name_col = #leading_spaces(value),
+		depth = math.floor(#leading_spaces(text) / config.options.indent),
+		name_col = #leading_spaces(text) + prefix_len,
+		display_line = text,
+		prefix_col = prefix_col,
+		prefix_len = prefix_len,
 		explicit_directory = explicit_directory,
 	}
 end
@@ -156,14 +180,15 @@ end
 local function blank_line_indent(buf, line)
 	local lines = vim.api.nvim_buf_get_lines(buf, line - 1, line, false)
 	local raw = lines[1]
-	if raw == nil or trim(raw) ~= "" then
+	local _, text, _, prefix_len = split_id_prefix(raw or "")
+	if raw == nil or trim(text) ~= "" then
 		return nil
 	end
 
-	return #leading_spaces(raw)
+	return #leading_spaces(text) + prefix_len
 end
 
-local function entry_for_current_line(parsed, entry)
+local function entry_for_current_line(parsed, entry, fallback_type, fallback_path)
 	if entry and parsed.name == entry.name then
 		local copy = vim.deepcopy(entry)
 		copy.name_col = parsed.name_col
@@ -173,10 +198,10 @@ local function entry_for_current_line(parsed, entry)
 
 	local copy = entry and vim.deepcopy(entry) or {}
 	copy.name = parsed.name
-	copy.type = entry and entry.type == "directory" and "directory" or parsed.type
+	copy.type = entry and entry.type == "directory" and "directory" or fallback_type or parsed.type
 	copy.symlink = false
-	copy.path = (entry and entry.path) or parsed.name
-	copy.source_path = entry and entry.path or nil
+	copy.path = (entry and entry.path) or fallback_path or parsed.name
+	copy.source_path = (entry and entry.path) or fallback_path or nil
 	copy.name_col = parsed.name_col
 	copy.searchable = false
 
@@ -211,17 +236,20 @@ function M.render(root, expanded, opts)
 			entry.open = entry.type == "directory" and expanded[entry.path] or false
 			entry.git_status = git_status.status_for(statuses, entry.path)
 			local line, decoration = line_for(entry, depth)
-			entry.id = entry.path
+			entry.id = opts.id_for_path and opts.id_for_path(entry.path) or entry.path
 			entry.depth = depth
-			entry.line = line
+			entry.display_line = line
 			entry.decoration = decoration
 			entry.git_decoration = { git_decoration(entry) }
-			entry.name_col = depth * config.options.indent
-			table.insert(lines, line)
+			entry.name_col = depth * config.options.indent + id_prefix_width
+			entry.prefix_col = depth * config.options.indent
+			entry.prefix_len = id_prefix_width
+			entry.line = M.line_with_id(entry.id, line)
+			table.insert(lines, entry.line)
 			table.insert(entries, entry)
 			max_width = math.max(
 				max_width,
-				virt_text_width(entry.git_decoration) + virt_text_width(decoration) + display_width(line)
+				virt_text_width(entry.git_decoration) + virt_text_width(decoration) + display_width(entry.display_line)
 			)
 
 			if entry.type == "directory" and expanded[entry.path] then
@@ -252,7 +280,7 @@ function M.refresh_git_status(root, rendered)
 			max_width,
 			virt_text_width(entry.git_decoration)
 				+ virt_text_width(entry.decoration or {})
-				+ display_width(entry.line or "")
+				+ display_width(entry.display_line or entry.line or "")
 		)
 	end
 	rendered.max_width = max_width
@@ -303,20 +331,15 @@ end
 
 function M.decorate(buf, entries, search)
 	M.setup_highlights()
-	vim.api.nvim_buf_clear_namespace(buf, M.id_ns, 0, -1)
-	return M.reset_decorations(buf, entries, search, true)
+	return M.reset_decorations(buf, entries, search)
 end
 
-function M.reset_decorations(buf, entries, search, create_ids)
+function M.reset_decorations(buf, entries, search)
 	vim.api.nvim_buf_clear_namespace(buf, M.decor_ns, 0, -1)
-	local mark_ids = {}
 
 	for index, entry in ipairs(entries) do
 		local line = index - 1
-		if create_ids then
-			local mark_id = set_id_extmark(buf, line)
-			mark_ids[mark_id] = entry.id
-		end
+		conceal_id_prefix(buf, line, entry.prefix_col or 0, entry.prefix_len or 0)
 
 		highlight_search_name(buf, line, entry, search)
 		local search_index_decoration = search_index_decoration_for(entry, search)
@@ -344,41 +367,24 @@ function M.reset_decorations(buf, entries, search, create_ids)
 			})
 		end
 	end
-
-	return mark_ids
 end
 
-function M.lines_with_ids(buf, mark_ids)
+function M.lines_with_ids(buf)
 	local lines = vim.api.nvim_buf_get_lines(buf, 0, -1, false)
-	local extmarks = vim.api.nvim_buf_get_extmarks(buf, M.id_ns, 0, -1, { details = true })
-	local marks_by_line = {}
-
-	for _, mark in ipairs(extmarks) do
-		local details = mark[4] or {}
-		local id = mark_ids and mark_ids[mark[1]]
-		local line = mark[2] + 1
-		if id and not details.invalid and not marks_by_line[line] then
-			marks_by_line[line] = {
-				id = id,
-				mark_id = mark[1],
-			}
-		end
-	end
-
 	local result = {}
 	for index, line in ipairs(lines) do
-		local mark = marks_by_line[index] or {}
+		local inline_id = split_id_prefix(line)
 		table.insert(result, {
 			line = line,
-			id = mark.id,
-			mark_id = mark.mark_id,
+			id = inline_id,
 		})
 	end
 	return result
 end
 
-function M.entry_at_line(buf, line, entries_by_id, mark_ids)
-	local rows = M.lines_with_ids(buf, mark_ids)
+function M.entry_at_line(buf, line, entries_by_id, opts)
+	opts = opts or {}
+	local rows = M.lines_with_ids(buf)
 	local item = rows[line]
 	if not item then
 		return nil
@@ -393,23 +399,12 @@ function M.entry_at_line(buf, line, entries_by_id, mark_ids)
 	parsed.type = (parsed.explicit_directory or (next_item and next_item.depth > parsed.depth)) and "directory"
 		or "file"
 
-	return entry_for_current_line(parsed, item.id and entries_by_id[item.id] or nil)
-end
-
-function M.ids_by_line(buf, mark_ids)
-	local extmarks = vim.api.nvim_buf_get_extmarks(buf, M.id_ns, 0, -1, { details = true })
-	local result = {}
-
-	for _, mark in ipairs(extmarks) do
-		local details = mark[4] or {}
-		local id = mark_ids and mark_ids[mark[1]]
-		local line = mark[2] + 1
-		if id and not details.invalid and not result[line] then
-			result[line] = id
-		end
-	end
-
-	return result
+	return entry_for_current_line(
+		parsed,
+		item.id and entries_by_id[item.id] or nil,
+		item.id and opts.types_by_id and opts.types_by_id[item.id] or nil,
+		item.id and opts.paths_by_id and opts.paths_by_id[item.id] or nil
+	)
 end
 
 function M.entries_by_id(entries)
@@ -420,174 +415,19 @@ function M.entries_by_id(entries)
 	return result
 end
 
-local function matching_entry_id(parsed, entries_by_id, used_ids, released_ids)
-	for id, entry in pairs(entries_by_id) do
-		if
-			released_ids[id]
-			and not used_ids[id]
-			and entry.name == parsed.name
-			and (entry.depth == nil or entry.depth == parsed.depth)
-		then
-			return id
-		end
-	end
-	return nil
-end
-
-local function collect_invalid_line_ids(buf, entries_by_id, mark_ids, parsed)
-	local valid_lines = {}
-	for _, item in ipairs(parsed) do
-		valid_lines[item.line] = true
-	end
-
-	local released_ids = {}
-	local extmarks = vim.api.nvim_buf_get_extmarks(buf, M.id_ns, 0, -1, { details = true })
-	local marked_ids = {}
-	for _, mark in ipairs(extmarks) do
-		local details = mark[4] or {}
-		local entry_id = mark_ids and mark_ids[mark[1]]
-		local line = mark[2] + 1
-		if entry_id and entries_by_id[entry_id] then
-			if details.invalid or not valid_lines[line] then
-				released_ids[entry_id] = true
-			else
-				marked_ids[entry_id] = true
-			end
-		end
-	end
-	for entry_id in pairs(entries_by_id) do
-		if not marked_ids[entry_id] then
-			released_ids[entry_id] = true
-		end
-	end
-	return released_ids
-end
-
-local function has_matching_entry_line(parsed, entry, current_line)
-	if not entry then
-		return false
-	end
-
-	for _, item in ipairs(parsed) do
-		if
-			item.line ~= current_line
-			and item.name == entry.name
-			and (entry.depth == nil or entry.depth == item.depth)
-		then
-			return true
-		end
-	end
-	return false
-end
-
-local function matching_yanked_index(yanked, yank_index, item, entry_id)
-	if not yanked then
-		return nil
-	end
-
-	for index = yank_index, #yanked do
-		local yanked_item = yanked[index]
-		if yanked_item.line == item.raw or yanked_item.id == entry_id then
-			return index
-		end
-	end
-	return nil
-end
-
-local function yanked_depth(yanked_item)
-	local parsed = parse_line(yanked_item.line)
-	return parsed and parsed.depth or nil
-end
-
-local function yanked_has_children(yanked, index)
-	local depth = yanked_depth(yanked[index])
-	local next_depth = yanked[index + 1] and yanked_depth(yanked[index + 1]) or nil
-	return depth and next_depth and next_depth > depth
-end
-
-function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, current_line)
-	local marks_by_line = M.ids_by_line(buf, mark_ids)
+function M.sync_decorations(buf, entries_by_id, search, current_line, opts)
+	opts = opts or {}
 	local parsed = parsed_lines(buf)
-	local yank_index = 1
-	local used_ids = {}
-	local released_ids = collect_invalid_line_ids(buf, entries_by_id, mark_ids, parsed)
-	local resolved_ids = {}
 	vim.api.nvim_buf_clear_namespace(buf, M.decor_ns, 0, -1)
 
 	for _, item in ipairs(parsed) do
-		local entry_id = marks_by_line[item.line]
-		local original_entry_id = entry_id
-		local entry = entry_id and entries_by_id[entry_id] or nil
-		local matches_current_line = entry
-			and entry.name == item.name
-			and (entry.depth == nil or entry.depth == item.depth)
-		local used_yank = false
-		local yanked_entry_id = nil
-
-		if
-			entry
-			and not matches_current_line
-			and has_matching_entry_line(parsed, entry, item.line)
-			and (item.type == "directory" or matching_entry_id(item, entries_by_id, used_ids, released_ids))
-		then
-			released_ids[entry_id] = true
-			entry_id = nil
-			original_entry_id = nil
-			entry = nil
-			matches_current_line = false
-		end
-
-		local matched_yanked_index = not matches_current_line
-				and matching_yanked_index(yanked, yank_index, item, entry_id)
-			or nil
-		local yanked_item = matched_yanked_index and yanked[matched_yanked_index] or nil
-		if yanked_item then
-			local yanked_entry = entries_by_id[yanked_item.id]
-			local skip_expanded_parent = yanked_has_children(yanked, matched_yanked_index)
-				and yanked_entry
-				and yanked_entry.type == "directory"
-				and yanked_item.line ~= item.raw
-			if skip_expanded_parent then
-				entry_id = nil
-				entry = nil
-				matches_current_line = false
-			else
-				entry_id = yanked_item.id
-				entry = entries_by_id[entry_id]
-				matches_current_line = entry
-					and entry.name == item.name
-					and (entry.depth == nil or entry.depth == item.depth)
-			end
-			yank_index = matched_yanked_index + 1
-			used_yank = true
-			yanked_entry_id = entry_id
-			if original_entry_id and original_entry_id ~= yanked_item.id then
-				released_ids[original_entry_id] = true
-			end
-			if original_entry_id and skip_expanded_parent then
-				released_ids[original_entry_id] = true
-			end
-		end
-
-		if not matches_current_line and (not entry or used_yank) then
-			entry_id = matching_entry_id(item, entries_by_id, used_ids, released_ids)
-			entry = entry_id and entries_by_id[entry_id] or nil
-			matches_current_line = entry ~= nil
-			if not matches_current_line and yanked_entry_id then
-				entry_id = yanked_entry_id
-				entry = entries_by_id[entry_id]
-				matches_current_line = entry ~= nil
-			end
-		elseif entry then
-			matches_current_line = true
-		end
-
-		if entry_id and matches_current_line then
-			resolved_ids[item.line] = entry_id
-			used_ids[entry_id] = true
-		end
-
-		entry = entry_for_current_line(item, entry_id and entries_by_id[entry_id] or nil)
+		local entry = entry_for_current_line(
+			item,
+			item.id and entries_by_id[item.id] or nil,
+			item.id and opts.types_by_id and opts.types_by_id[item.id] or nil,
+			item.id and opts.paths_by_id and opts.paths_by_id[item.id] or nil
+		)
+		conceal_id_prefix(buf, item.line - 1, item.prefix_col, item.prefix_len or 0)
 		if entry.searchable then
 			highlight_search_name(buf, item.line - 1, entry, search)
 		end
@@ -633,19 +473,6 @@ function M.sync_decorations(buf, entries_by_id, mark_ids, search, yanked, curren
 				virt_text_pos = "inline",
 				priority = 101,
 			})
-		end
-	end
-
-	vim.api.nvim_buf_clear_namespace(buf, M.id_ns, 0, -1)
-	if mark_ids then
-		for mark_id in pairs(mark_ids) do
-			mark_ids[mark_id] = nil
-		end
-	end
-	for line, entry_id in pairs(resolved_ids) do
-		local mark_id = set_id_extmark(buf, line - 1)
-		if mark_ids then
-			mark_ids[mark_id] = entry_id
 		end
 	end
 end

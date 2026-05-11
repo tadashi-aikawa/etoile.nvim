@@ -161,6 +161,20 @@ local function highlights_at(line)
 	return result
 end
 
+local function conceals_at(line)
+	local result = {}
+	for _, mark in ipairs(buffers[1].extmarks) do
+		if mark.ns == "etoile_decor" and mark.line == line - 1 and mark.opts.conceal then
+			table.insert(result, {
+				col = mark.col,
+				end_col = mark.opts.end_col,
+				conceal = mark.opts.conceal,
+			})
+		end
+	end
+	return result
+end
+
 describe("etoile.renderer", function()
 	before_each(reset_vim)
 
@@ -183,29 +197,96 @@ describe("etoile.renderer", function()
 		assert.are.same({ default = true, link = "Comment" }, highlights.EtoileSearchIndex)
 	end)
 
-	it("keeps long entry ids out of virtual text highlight groups", function()
+	it("embeds concealed numeric id prefixes and keeps display width stable", function()
+		local scanner = require("etoile.scanner")
+		scanner.list_dir = function(dir)
+			if dir == "/tmp/project" then
+				return {
+					{ path = "/tmp/project/dir", name = "dir", type = "directory" },
+				}
+			end
+			if dir == "/tmp/project/dir" then
+				return {
+					{ path = "/tmp/project/dir/child.md", name = "child.md", type = "file" },
+				}
+			end
+			return {}
+		end
+
 		local renderer = require("etoile.renderer")
-		local long_path = "/tmp/project/" .. string.rep("nested-directory/", 20) .. "fyler.lua"
+		local next_id = 0
+		local rendered = renderer.render("/tmp/project", { ["/tmp/project/dir"] = true }, {
+			id_for_path = function()
+				next_id = next_id + 1
+				return ("%06d"):format(next_id)
+			end,
+		})
+
+		assert.are.equal("000001 dir", rendered.lines[1])
+		assert.are.equal("  000002 child.md", rendered.lines[2])
+		assert.are.equal(7, rendered.entries[1].name_col)
+		assert.are.equal(9, rendered.entries[2].name_col)
+		assert.are.equal(0, rendered.entries[1].prefix_col)
+		assert.are.equal(2, rendered.entries[2].prefix_col)
+		assert.are.equal(15, rendered.max_width)
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000099 copy.md" })
+
+		assert.are.same({
+			{
+				line = "000099 copy.md",
+				id = "000099",
+				mark_id = nil,
+			},
+		}, renderer.lines_with_ids(1))
+
+		renderer.sync_decorations(1, renderer.entries_by_id(rendered.entries), nil, nil)
+
+		assert.are.same({
+			{
+				line = "000099 copy.md",
+				id = "000099",
+			},
+		}, renderer.lines_with_ids(1))
+		assert.are.same({ "000099 copy.md" }, buffers[1].lines)
+		assert.are.same({
+			{ col = 0, end_col = 7, conceal = "" },
+		}, conceals_at(1))
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "  000099 copy.md" })
+		renderer.sync_decorations(1, renderer.entries_by_id(rendered.entries), nil, nil)
+
+		assert.are.same({
+			{
+				line = "  000099 copy.md",
+				id = "000099",
+			},
+		}, renderer.lines_with_ids(1))
+		assert.are.same({
+			{ col = 2, end_col = 9, conceal = "" },
+		}, conceals_at(1))
+	end)
+
+	it("reads entry ids from buffer text without id extmarks", function()
+		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = long_path,
-				path = long_path,
+				id = "000001",
+				path = "/tmp/project/fyler.lua",
 				name = "fyler.lua",
 				type = "file",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "fyler.lua" })
-		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 fyler.lua" })
+		renderer.decorate(1, entries)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same(long_path, lines[1].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000001", lines[1].id)
 		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" then
-				assert.are.same(nil, mark.opts.virt_text)
-			end
+			assert.are_not.same("etoile_id", mark.ns)
 		end
 	end)
 
@@ -256,109 +337,140 @@ describe("etoile.renderer", function()
 		assert.are.same({ { col = 0, end_col = #"beta.lua", hl_group = "EtoileSearchCurrent" } }, highlights_at(2))
 	end)
 
-	it("attaches a copied line id by yank order and recomputes the icon from the current name", function()
+	it("uses inline ids for copied lines and recomputes the icon from the current name", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/base.md",
+				id = "000001",
 				path = "/tmp/project/base.md",
 				name = "base.md",
 				type = "file",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/other.txt",
+				id = "000002",
 				path = "/tmp/project/other.txt",
 				name = "other.txt",
 				type = "file",
 				decoration = { { "T ", "TxtIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "base.md", "other.txt" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "base.md", "copy.txt", "other.txt" })
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark.line == 1 then
-				mark.line = 2
-			end
-		end
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 base.md", "000002 other.txt" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 base.md", "000001 copy.txt", "000002 other.txt" })
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/base.md", line = "copy.txt" },
-		})
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/base.md", lines[2].id)
-		assert.are.same("/tmp/project/other.txt", lines[3].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000001", lines[2].id)
+		assert.are.same("000002", lines[3].id)
 		assert.are.same({ { "   ", "Normal" } }, decorations_at(2)[1])
 		assert.are.same({ { "T ", "TxtIcon" } }, decorations_at(2)[2])
 	end)
 
-	it("repairs ids after yyp leaves the next line id on the inserted line", function()
+	it("keeps the source type icon for a collapsed copied directory outside the current snapshot", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/index.ts",
+				id = "000025",
+				path = "/tmp/project/dir8",
+				name = "dir8",
+				type = "directory",
+				decoration = { { "D ", "EtoileDirectoryIcon" } },
+				name_col = 7,
+			},
+		}
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000025 dir8", "000030 dir9" })
+		renderer.decorate(1, entries)
+
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil, {
+			types_by_id = {
+				["000030"] = "directory",
+			},
+		})
+
+		assert.are.equal("EtoileDirectoryIcon", decorations_at(2)[2][1][2])
+	end)
+
+	it("uses source metadata for entries outside the current snapshot", function()
+		local renderer = require("etoile.renderer")
+
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000030 dir9" })
+
+		local entry = renderer.entry_at_line(1, 1, {}, {
+			paths_by_id = {
+				["000030"] = "/tmp/project/dir8/dir9",
+			},
+			types_by_id = {
+				["000030"] = "directory",
+			},
+		})
+
+		assert.are.same("dir9", entry.name)
+		assert.are.same("directory", entry.type)
+		assert.are.same("/tmp/project/dir8/dir9", entry.path)
+		assert.are.same("/tmp/project/dir8/dir9", entry.source_path)
+	end)
+
+	it("keeps repeated inline ids after native put", function()
+		local renderer = require("etoile.renderer")
+		local entries = {
+			{
+				id = "000001",
 				path = "/tmp/project/index.ts",
 				name = "index.ts",
 				type = "file",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/package.json",
+				id = "000002",
 				path = "/tmp/project/package.json",
 				name = "package.json",
 				type = "file",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "index.ts", "package.json" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "index.ts", "index.ts", "package.json" })
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark.line == 1 then
-				mark.line = 2
-			end
-		end
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 index.ts", "000002 package.json" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 index.ts", "000001 index.ts", "000002 package.json" })
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/index.ts", line = "index.ts" },
-		})
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		local entry = renderer.entry_at_line(1, 2, renderer.entries_by_id(entries), mark_ids)
+		local entry = renderer.entry_at_line(1, 2, renderer.entries_by_id(entries))
 		assert.are.same("/tmp/project/index.ts", entry.path)
 		assert.are.same("index.ts", entry.name)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/index.ts", lines[1].id)
-		assert.are.same("/tmp/project/index.ts", lines[2].id)
-		assert.are.same("/tmp/project/package.json", lines[3].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000001", lines[1].id)
+		assert.are.same("000001", lines[2].id)
+		assert.are.same("000002", lines[3].id)
 	end)
 
 	it("keeps the source path for renamed entries with an existing id", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/base.md",
+				id = "000001",
 				path = "/tmp/project/base.md",
 				name = "base.md",
 				type = "file",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "base.md" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "renamed.md" })
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 base.md" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 renamed.md" })
 
-		local entry = renderer.entry_at_line(1, 1, renderer.entries_by_id(entries), mark_ids)
+		local entry = renderer.entry_at_line(1, 1, renderer.entries_by_id(entries))
 
 		assert.are.same("renamed.md", entry.name)
 		assert.are.same("/tmp/project/base.md", entry.path)
@@ -366,413 +478,128 @@ describe("etoile.renderer", function()
 		assert.is_false(entry.searchable)
 	end)
 
-	it("repairs ids after undo restores a deleted directory line with the next line id", function()
+	it("keeps copied child inline ids when an expanded directory is pasted above the source and renamed", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/d1",
-				path = "/tmp/project/d1",
-				name = "d1",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/d2",
-				path = "/tmp/project/d2",
-				name = "d2",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/d3",
-				path = "/tmp/project/d3",
-				name = "d3",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-		}
-
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "d1", "d2", "d3" })
-		local mark_ids = renderer.decorate(1, entries)
-
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d2" then
-				mark.opts.invalid = true
-			elseif mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d3" then
-				mark.line = 1
-			end
-		end
-
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/d1", lines[1].id)
-		assert.are.same("/tmp/project/d2", lines[2].id)
-		assert.are.same("/tmp/project/d3", lines[3].id)
-	end)
-
-	it("repairs ids after undo restores a deleted directory line when the deleted line id is missing", function()
-		local renderer = require("etoile.renderer")
-		local entries = {
-			{
-				id = "/tmp/project/d1",
-				path = "/tmp/project/d1",
-				name = "d1",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/d2",
-				path = "/tmp/project/d2",
-				name = "d2",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/d3",
-				path = "/tmp/project/d3",
-				name = "d3",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-		}
-
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "d1", "d2", "d3" })
-		local mark_ids = renderer.decorate(1, entries)
-		local kept = {}
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d2" then
-				-- Simulate Neovim undo restoring the text but dropping the deleted line id.
-			else
-				if mark.ns == "etoile_id" and mark_ids[mark.id] == "/tmp/project/d3" then
-					mark.line = 1
-				end
-				table.insert(kept, mark)
-			end
-		end
-		buffers[1].extmarks = kept
-
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/d1", lines[1].id)
-		assert.are.same("/tmp/project/d2", lines[2].id)
-		assert.are.same("/tmp/project/d3", lines[3].id)
-	end)
-
-	it("keeps yanked child ids when an expanded directory is pasted above the source and renamed", function()
-		local renderer = require("etoile.renderer")
-		local entries = {
-			{
-				id = "/tmp/project/dir1",
+				id = "000001",
 				path = "/tmp/project/dir1",
 				name = "dir1",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/images2",
+				id = "000002",
 				path = "/tmp/project/images2",
 				name = "images2",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/images2/macky.png",
+				id = "000003",
 				path = "/tmp/project/images2/macky.png",
 				name = "macky.png",
 				type = "file",
 				depth = 1,
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
+				name_col = 9,
 			},
 			{
-				id = "/tmp/project/images2/minerva.png",
+				id = "000004",
 				path = "/tmp/project/images2/minerva.png",
 				name = "minerva.png",
 				type = "file",
 				depth = 1,
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
+				name_col = 9,
 			},
 			{
-				id = "/tmp/project/.gitignore",
+				id = "000005",
 				path = "/tmp/project/.gitignore",
 				name = ".gitignore",
 				type = "file",
 				depth = 0,
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
 		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"dir1",
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-			".gitignore",
+			"000001 dir1",
+			"000002 images2",
+			"  000003 macky.png",
+			"  000004 minerva.png",
+			"000005 .gitignore",
 		})
-		local mark_ids = renderer.decorate(1, entries)
+		renderer.decorate(1, entries)
 		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"dir1",
-			"images1",
-			"  macky.png",
-			"  minerva.png",
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-			".gitignore",
+			"000001 dir1",
+			"000002 images1",
+			"  000003 macky.png",
+			"  000004 minerva.png",
+			"000002 images2",
+			"  000003 macky.png",
+			"  000004 minerva.png",
+			"000005 .gitignore",
 		})
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark.line == 2 then
-				mark.line = 5
-			elseif mark.ns == "etoile_id" and mark.line == 3 then
-				mark.line = 6
-			elseif mark.ns == "etoile_id" and mark.line == 4 then
-				mark.line = 7
-			end
-		end
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/images2", line = "images2" },
-			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
-			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
-		})
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same(nil, lines[2].id)
-		assert.are.same("/tmp/project/images2/macky.png", lines[3].id)
-		assert.are.same("/tmp/project/images2/minerva.png", lines[4].id)
-		assert.are.same("/tmp/project/images2", lines[5].id)
-		assert.are.same("/tmp/project/images2/macky.png", lines[6].id)
-		assert.are.same("/tmp/project/images2/minerva.png", lines[7].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000002", lines[2].id)
+		assert.are.same("000003", lines[3].id)
+		assert.are.same("000004", lines[4].id)
+		assert.are.same("000002", lines[5].id)
+		assert.are.same("000003", lines[6].id)
+		assert.are.same("000004", lines[7].id)
 	end)
 
-	it("releases a copied expanded directory id after the pasted parent is renamed", function()
+	it("keeps inline ids after opening a line above a directory", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/images2",
-				path = "/tmp/project/images2",
-				name = "images2",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/images2/macky.png",
-				path = "/tmp/project/images2/macky.png",
-				name = "macky.png",
-				type = "file",
-				depth = 1,
-				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
-			},
-			{
-				id = "/tmp/project/images2/minerva.png",
-				path = "/tmp/project/images2/minerva.png",
-				name = "minerva.png",
-				type = "file",
-				depth = 1,
-				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
-			},
-		}
-
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-		})
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-		})
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" then
-				mark.line = mark.line + 3
-			end
-		end
-
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/images2", line = "images2" },
-			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
-			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
-		})
-		vim.api.nvim_buf_set_lines(1, 0, 1, false, { "images1" })
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same(nil, lines[1].id)
-		assert.are.same("/tmp/project/images2/macky.png", lines[2].id)
-		assert.are.same("/tmp/project/images2/minerva.png", lines[3].id)
-		assert.are.same("/tmp/project/images2", lines[4].id)
-	end)
-
-	it("keeps a copied collapsed directory id after the pasted line is renamed", function()
-		local renderer = require("etoile.renderer")
-		local entries = {
-			{
-				id = "/tmp/project/images2",
-				path = "/tmp/project/images2",
-				name = "images2",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-		}
-
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "images2" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"images2",
-			"images2",
-		})
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" then
-				mark.line = mark.line + 1
-			end
-		end
-
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/images2", line = "images2" },
-		})
-		vim.api.nvim_buf_set_lines(1, 0, 1, false, { "images1" })
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/images2", lines[1].id)
-		assert.are.same("/tmp/project/images2", lines[2].id)
-	end)
-
-	it("matches pasted child lines after a renamed copied directory line is skipped", function()
-		local renderer = require("etoile.renderer")
-		local entries = {
-			{
-				id = "/tmp/project/images2",
-				path = "/tmp/project/images2",
-				name = "images2",
-				type = "directory",
-				depth = 0,
-				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
-			},
-			{
-				id = "/tmp/project/images2/macky.png",
-				path = "/tmp/project/images2/macky.png",
-				name = "macky.png",
-				type = "file",
-				depth = 1,
-				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
-			},
-			{
-				id = "/tmp/project/images2/minerva.png",
-				path = "/tmp/project/images2/minerva.png",
-				name = "minerva.png",
-				type = "file",
-				depth = 1,
-				decoration = { { "F ", "FileIcon" } },
-				name_col = 2,
-			},
-		}
-
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, {
-			"images1",
-			"  macky.png",
-			"  minerva.png",
-			"images2",
-			"  macky.png",
-			"  minerva.png",
-		})
-
-		local mark_ids = {}
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, {
-			{ id = "/tmp/project/images2", line = "images2" },
-			{ id = "/tmp/project/images2/macky.png", line = "  macky.png" },
-			{ id = "/tmp/project/images2/minerva.png", line = "  minerva.png" },
-		})
-
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same(nil, lines[1].id)
-		assert.are.same("/tmp/project/images2/macky.png", lines[2].id)
-		assert.are.same("/tmp/project/images2/minerva.png", lines[3].id)
-	end)
-
-	it("repairs ids after opening a line above a directory shifts the directory id to an empty line", function()
-		local renderer = require("etoile.renderer")
-		local entries = {
-			{
-				id = "/tmp/project/dir",
+				id = "000001",
 				path = "/tmp/project/dir",
 				name = "dir",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/dir2",
+				id = "000002",
 				path = "/tmp/project/dir2",
 				name = "dir2",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 			{
-				id = "/tmp/project/dir3",
+				id = "000003",
 				path = "/tmp/project/dir3",
 				name = "dir3",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dir", "dir2", "dir3" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dir", "", "dir2", "dir3" })
-		for _, mark in ipairs(buffers[1].extmarks) do
-			if mark.ns == "etoile_id" and mark.line == 1 then
-				mark.line = 1
-			elseif mark.ns == "etoile_id" and mark.line == 2 then
-				mark.line = 3
-			end
-		end
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 dir", "000002 dir2", "000003 dir3" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 dir", "", "000002 dir2", "000003 dir3" })
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/dir", lines[1].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000001", lines[1].id)
 		assert.are.same(nil, lines[2].id)
-		assert.are.same("/tmp/project/dir2", lines[3].id)
-		assert.are.same("/tmp/project/dir3", lines[4].id)
+		assert.are.same("000002", lines[3].id)
+		assert.are.same("000003", lines[4].id)
 		assert.are.same({ { "   ", "Normal" } }, decorations_at(3)[1])
 		assert.are.same({ { "D ", "EtoileDirectoryIcon" } }, decorations_at(3)[2])
 	end)
@@ -800,12 +627,12 @@ describe("etoile.renderer", function()
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dir", "", "dir2" })
-		local mark_ids = renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 dir", "", "000002 dir2" })
+		renderer.decorate(1, entries)
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil, 2)
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, 2)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
+		local lines = renderer.lines_with_ids(1)
 		assert.are.same(nil, lines[2].id)
 		assert.are.same({ { "   ", "Normal" } }, decorations_at(2)[1])
 		assert.are.same({ { "F ", "FileIcon" } }, decorations_at(2)[2])
@@ -821,24 +648,24 @@ describe("etoile.renderer", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/dir",
+				id = "000001",
 				path = "/tmp/project/dir",
 				name = "dir",
 				type = "directory",
 				depth = 0,
 				decoration = { { "D ", "EtoileDirectoryIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dir" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "dirr" })
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 dir" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 dirr" })
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		local lines = renderer.lines_with_ids(1, mark_ids)
-		assert.are.same("/tmp/project/dir", lines[1].id)
+		local lines = renderer.lines_with_ids(1)
+		assert.are.same("000001", lines[1].id)
 		assert.are.same({ { "   ", "Normal" } }, decorations_at(1)[1])
 		assert.are.same({ { "D ", "EtoileDirectoryIcon" } }, decorations_at(1)[2])
 	end)
@@ -847,24 +674,24 @@ describe("etoile.renderer", function()
 		local renderer = require("etoile.renderer")
 		local entries = {
 			{
-				id = "/tmp/project/Makefile2",
+				id = "000001",
 				path = "/tmp/project/Makefile2",
 				name = "Makefile2",
 				type = "file",
 				git_status = "added",
-				line = "Makefile2",
+				line = "000001 Makefile2",
 				decoration = { { "F ", "FileIcon" } },
-				name_col = 0,
+				name_col = 7,
 			},
 		}
 
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "Makefile2" })
-		local mark_ids = renderer.decorate(1, entries)
-		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "akefile2" })
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 Makefile2" })
+		renderer.decorate(1, entries)
+		vim.api.nvim_buf_set_lines(1, 0, -1, false, { "000001 akefile2" })
 
-		renderer.sync_decorations(1, renderer.entries_by_id(entries), mark_ids, nil, nil)
+		renderer.sync_decorations(1, renderer.entries_by_id(entries), nil, nil)
 
-		assert.are.same({ { col = 0, end_col = #"akefile2", hl_group = "EtoileGitAdded" } }, highlights_at(1))
+		assert.are.same({ { col = 7, end_col = 7 + #"akefile2", hl_group = "EtoileGitAdded" } }, highlights_at(1))
 	end)
 
 	it("renders a left git status gutter for changed, new, and unchanged entries", function()
@@ -909,10 +736,28 @@ describe("etoile.renderer", function()
 
 		vim.api.nvim_buf_set_lines(1, 0, -1, false, rendered.lines)
 		renderer.decorate(1, rendered.entries)
-		assert.are.same({ { col = 0, end_col = #"changed.txt", hl_group = "EtoileGitModified" } }, highlights_at(1))
-		assert.are.same({ { col = 0, end_col = #"new.txt", hl_group = "EtoileGitAdded" } }, highlights_at(2))
+		assert.are.same({
+			{
+				col = rendered.entries[1].name_col,
+				end_col = rendered.entries[1].name_col + #"changed.txt",
+				hl_group = "EtoileGitModified",
+			},
+		}, highlights_at(1))
+		assert.are.same({
+			{
+				col = rendered.entries[2].name_col,
+				end_col = rendered.entries[2].name_col + #"new.txt",
+				hl_group = "EtoileGitAdded",
+			},
+		}, highlights_at(2))
 		assert.are.same({}, highlights_at(3))
-		assert.are.same({ { col = 0, end_col = #"ignored.txt", hl_group = "EtoileGitIgnored" } }, highlights_at(4))
+		assert.are.same({
+			{
+				col = rendered.entries[4].name_col,
+				end_col = rendered.entries[4].name_col + #"ignored.txt",
+				hl_group = "EtoileGitIgnored",
+			},
+		}, highlights_at(4))
 	end)
 
 	it("renders aggregated git status on directories", function()
