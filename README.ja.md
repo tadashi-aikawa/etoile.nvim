@@ -213,7 +213,7 @@ require("etoile").setup({
     focus_tree = "<C-w>h",
   },
   search = {
-    exclude = { ".git", "node_modules", ".cache" },
+    exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
     expand_matches = true,
   },
   git_status = {
