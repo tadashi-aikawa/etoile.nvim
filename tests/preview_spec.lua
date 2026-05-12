@@ -409,4 +409,41 @@ describe("etoile.preview", function()
 		assert.are.same({}, buffers[state.preview_buf].lines)
 		assert.are.equal("  ", win_configs[1].title)
 	end)
+
+	it("sets conceallevel = 0 for a regular file preview", function()
+		stat_by_path["/tmp/project/test.lua"] = { type = "file" }
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/test.lua", "file")
+
+		assert.are.equal(0, vim.wo[state.preview_win].conceallevel)
+	end)
+
+	it("sets conceallevel = 0 for a directory preview", function()
+		add_entry("/tmp/project", "src", "directory")
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project", "directory")
+
+		assert.are.equal(0, vim.wo[state.preview_win].conceallevel)
+	end)
+
+	it("sets conceallevel = 0 when clearing a preview", function()
+		add_entry("/tmp/project", "src", "directory")
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project", "directory")
+		preview.clear(state, "new.lua")
+
+		assert.are.equal(0, vim.wo[state.preview_win].conceallevel)
+	end)
 end)

@@ -290,6 +290,7 @@ local function set_preview_options(win)
 	vim.wo[win].number = true
 	vim.wo[win].relativenumber = false
 	vim.wo[win].wrap = false
+	vim.wo[win].conceallevel = 0
 end
 
 local function apply_preview_options(state, file_path, entry_type)
@@ -297,6 +298,7 @@ local function apply_preview_options(state, file_path, entry_type)
 		vim.wo[state.preview_win].number = false
 		vim.wo[state.preview_win].relativenumber = false
 		vim.wo[state.preview_win].wrap = false
+		vim.wo[state.preview_win].conceallevel = 0
 	else
 		set_preview_options(state.preview_win)
 	end
@@ -306,6 +308,7 @@ local function apply_empty_preview_options(state)
 	vim.wo[state.preview_win].number = false
 	vim.wo[state.preview_win].relativenumber = false
 	vim.wo[state.preview_win].wrap = false
+	vim.wo[state.preview_win].conceallevel = 0
 end
 
 local function apply_preview_buffer(state, file_path, entry_type)
