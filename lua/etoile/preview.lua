@@ -287,16 +287,12 @@ local function setup_preview_write_sync(state, buf, buf_is_scratch)
 end
 
 local function set_preview_options(win)
-	vim.wo[win].number = true
-	vim.wo[win].relativenumber = false
 	vim.wo[win].wrap = false
 	vim.wo[win].conceallevel = 0
 end
 
 local function apply_preview_options(state, file_path, entry_type)
 	if entry_type == "directory" or is_image_path(file_path) then
-		vim.wo[state.preview_win].number = false
-		vim.wo[state.preview_win].relativenumber = false
 		vim.wo[state.preview_win].wrap = false
 		vim.wo[state.preview_win].conceallevel = 0
 	else
@@ -305,8 +301,6 @@ local function apply_preview_options(state, file_path, entry_type)
 end
 
 local function apply_empty_preview_options(state)
-	vim.wo[state.preview_win].number = false
-	vim.wo[state.preview_win].relativenumber = false
 	vim.wo[state.preview_win].wrap = false
 	vim.wo[state.preview_win].conceallevel = 0
 end

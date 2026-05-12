@@ -168,8 +168,6 @@ local function refresh(state)
 
 	if valid_win(state.win) then
 		vim.api.nvim_win_set_config(state.win, tree_config(state))
-		vim.wo[state.win].number = true
-		vim.wo[state.win].relativenumber = false
 		vim.wo[state.win].conceallevel = 2
 		vim.wo[state.win].concealcursor = "nvic"
 		local focus_path = state.focus_path
@@ -699,8 +697,6 @@ function M.open(opts)
 	renderer.decorate(state.buf, state.rendered.entries, state.search)
 	state.sync_suspended = false
 	state.win = vim.api.nvim_open_win(state.buf, true, tree_config(state))
-	vim.wo[state.win].number = true
-	vim.wo[state.win].relativenumber = false
 	vim.wo[state.win].conceallevel = 2
 	vim.wo[state.win].concealcursor = "nvic"
 	set_cursor_to_path(state, state.focus_path)
