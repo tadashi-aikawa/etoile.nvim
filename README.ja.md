@@ -54,11 +54,9 @@ TODO: 動画が準備できたら追加する。
     -- 任意。画像 preview が必要な場合のみ:
     -- "folke/snacks.nvim",
   },
-  config = function()
-    require("etoile").setup({
-      -- 後述の「設定例」を参照
-    })
-  end,
+  opts = {
+    -- 後述の「設定例」を参照
+  }
 }
 ```
 

@@ -54,11 +54,10 @@ TODO: Add a demo video after it is ready.
     -- Optional, only needed for image previews:
     -- "folke/snacks.nvim",
   },
-  config = function()
-    require("etoile").setup({
-      -- See "Configuration Example" below.
-    })
-  end,
+  ---@class etoile.Config
+  opts = {
+    -- See "Configuration Example" below.
+  }
 }
 ```
 
