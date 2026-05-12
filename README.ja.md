@@ -180,7 +180,7 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
     reserve_preview_width = true,
     row = nil,
     col = 4,
-    exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
+    exclude = { ".git" },
   },
   preview = {
     enabled = true,
@@ -268,7 +268,7 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
 - `icon_width_padding` は virtual text として描画される symlink / filetype icon 用の領域を確保する。
 - `right_padding` は tree 右側の余白を追加する。
 
-`tree.exclude` は tree ウィンドウおよびディレクトリプレビューからマッチした entry を非表示にする。固定名に加え、`*.log` や `build` などのグロブパターンも指定できる。デフォルトは `{ ".git", "node_modules", ".cache", "venv", ".venv" }`。非表示の entry は `toggle_exclude` キーマップ（デフォルト `<leader>i`）で切り替えられる。
+`tree.exclude` は tree ウィンドウおよびディレクトリプレビューからマッチした entry を非表示にする。固定名に加え、`*.log` や `build` などのグロブパターンも指定できる。デフォルトは `{ ".git" }`。非表示の entry は `toggle_exclude` キーマップ（デフォルト `<leader>i`）で切り替えられる。
 
 高さは `height_ratio`, `max_height`, `max_height_ratio`, `min_height`, `min_height_ratio` で制御する。effective max height は size と ratio の大きい方、effective min height は size と ratio の小さい方を使う。
 

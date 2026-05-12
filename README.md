@@ -185,7 +185,7 @@ Complete sample including all options and default values:
     reserve_preview_width = true,
     row = nil,
     col = 4,
-    exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
+    exclude = { ".git" },
   },
   preview = {
     enabled = true,
@@ -273,7 +273,7 @@ Complete sample including all options and default values:
 - `icon_width_padding` reserves room for symlink and filetype icons rendered as virtual text.
 - `right_padding` adds room on the right side of the tree.
 
-`tree.exclude` hides matching entries from the tree window and directory previews. Glob patterns such as `*.log` and `build` are supported in addition to exact names. Defaults to `{ ".git", "node_modules", ".cache", "venv", ".venv" }`. Hidden entries can be toggled with the `toggle_exclude` keymap (`<leader>i` by default).
+`tree.exclude` hides matching entries from the tree window and directory previews. Glob patterns such as `*.log` and `build` are supported in addition to exact names. Defaults to `{ ".git" }`. Hidden entries can be toggled with the `toggle_exclude` keymap (`<leader>i` by default).
 
 Height is controlled by `height_ratio`, `max_height`, `max_height_ratio`, `min_height`, and `min_height_ratio`. The effective max height uses the larger value from size and ratio, and the effective min height uses the smaller value from size and ratio.
 

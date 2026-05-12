@@ -119,7 +119,7 @@ local defaults = {
 		reserve_preview_width = true,
 		row = nil,
 		col = 4,
-		exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
+		exclude = { ".git" },
 	},
 	preview = {
 		enabled = true,
