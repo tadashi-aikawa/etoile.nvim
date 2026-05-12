@@ -149,7 +149,9 @@ end
 
 local function refresh(state)
 	state.rendered = renderer.render(state.root, state.expanded, {
-		exclude = config.options.search.exclude,
+		exclude = config.options.tree.exclude,
+		show_excluded = state.show_excluded,
+		search_exclude = config.options.search.exclude,
 		id_for_path = function(entry_path)
 			return id_for_path(state, entry_path)
 		end,
@@ -557,6 +559,15 @@ local function keep_cursor_in_name(state)
 	end
 end
 
+local function toggle_exclude_visibility(state)
+	local entry = entry_at_cursor(state)
+	if entry then
+		state.focus_path = entry.path
+	end
+	state.show_excluded = not state.show_excluded
+	refresh_without_undo(state)
+end
+
 local function setup_buffer(state)
 	vim.api.nvim_set_option_value("buftype", "acwrite", { buf = state.buf })
 	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = state.buf })
@@ -618,6 +629,9 @@ local function setup_buffer(state)
 			vim.api.nvim_win_close(state.win, true)
 		end
 	end, "Close etoile")
+	map(state.buf, keys.toggle_exclude, function()
+		toggle_exclude_visibility(state)
+	end, "Toggle etoile excluded entries")
 
 	vim.api.nvim_create_autocmd("BufWriteCmd", {
 		buffer = state.buf,
@@ -666,6 +680,7 @@ function M.open(opts)
 		search_matches = {},
 		search_index = 0,
 		search = nil,
+		show_excluded = false,
 	}
 	state.resize_main = function()
 		if valid_win(state.win) then
@@ -680,7 +695,9 @@ function M.open(opts)
 
 	expand_to_current(state)
 	state.rendered = renderer.render(state.root, state.expanded, {
-		exclude = config.options.search.exclude,
+		exclude = config.options.tree.exclude,
+		show_excluded = state.show_excluded,
+		search_exclude = config.options.search.exclude,
 		id_for_path = function(entry_path)
 			return id_for_path(state, entry_path)
 		end,

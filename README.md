@@ -116,6 +116,7 @@ require("etoile").open({ path = "/path/to/project" })
 | `<leader>l` | Clear search highlights |
 | `<leader>?` | Show tree/preview keymap help |
 | `q` | Close etoile |
+| `<leader>i` | Toggle visibility of entries hidden by `tree.exclude` |
 | `<C-o>` / `<C-i>` | Jump backward/forward while staying in the etoile window |
 
 ### Editing the Tree
@@ -184,6 +185,7 @@ Complete sample including all options and default values:
     reserve_preview_width = true,
     row = nil,
     col = 4,
+    exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
   },
   preview = {
     enabled = true,
@@ -218,6 +220,7 @@ Complete sample including all options and default values:
     focus_toggle = "<C-w>w",
     focus_preview = "<C-w>l",
     focus_tree = "<C-w>h",
+    toggle_exclude = "<leader>i",
   },
   search = {
     exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
@@ -245,6 +248,7 @@ Complete sample including all options and default values:
       ignored = "",
       conflicted = "",
     },
+    search_excluded = "󰈉",
   },
   indent = 2,
 }
@@ -269,6 +273,8 @@ Complete sample including all options and default values:
 - `icon_width_padding` reserves room for symlink and filetype icons rendered as virtual text.
 - `right_padding` adds room on the right side of the tree.
 
+`tree.exclude` hides matching entries from the tree window and directory previews. Glob patterns such as `*.log` and `build` are supported in addition to exact names. Defaults to `{ ".git", "node_modules", ".cache", "venv", ".venv" }`. Hidden entries can be toggled with the `toggle_exclude` keymap (`<leader>i` by default).
+
 Height is controlled by `height_ratio`, `max_height`, `max_height_ratio`, `min_height`, and `min_height_ratio`. The effective max height uses the larger value from size and ratio, and the effective min height uses the smaller value from size and ratio.
 
 ### preview
@@ -285,6 +291,8 @@ Directory preview is enabled by default and limited to `preview.directory.max_de
 
 All configurable mappings are buffer-local. `focus_toggle` switches between the tree window and preview buffer. `focus_preview` is mapped in the tree buffer, and `focus_tree` is mapped in the preview buffer.
 
+`toggle_exclude` toggles the visibility of entries hidden by `tree.exclude`. When toggled on, hidden entries appear in the tree without any special icon. Toggle off to hide them again.
+
 `help` is mapped in both the tree and preview buffers. The help window opens with the current buffer's tab selected, and the Tree / Preview tabs can be switched with `<Tab>` and `<S-Tab>`.
 
 `open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
@@ -293,7 +301,7 @@ All configurable mappings are buffer-local. `focus_toggle` switches between the 
 
 ### search
 
-`search.exclude` skips matching entries while rendering the tree, searching, and rendering directory previews.
+`search.exclude` skips matching entries when searching. Glob patterns such as `*.log` and `build` are supported in addition to exact names. Entries matching `search.exclude` are still shown in the tree but display a `󰈉` icon (configurable via `icons.search_excluded`) in the left gutter when no git status is present.
 
 `search.expand_matches = true` expands parent directories for all matched entries before jumping to the current match. Set it to `false` to keep matches collapsed until they are selected.
 
@@ -316,6 +324,8 @@ All enabled confirmations are grouped into one confirmation window when saving. 
 `icons.directory` and `icons.directory_open` customize collapsed and expanded directory icons.
 
 `icons.git_status` customizes the status icons shown in the left gutter. The supported statuses are `modified`, `added`, `deleted`, `renamed`, `ignored`, and `conflicted`.
+
+`icons.search_excluded` customizes the icon shown in the left gutter for entries that match `search.exclude`. This icon is displayed instead of a git status icon when no git status is present.
 
 ### indent
 

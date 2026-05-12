@@ -63,6 +63,43 @@ local function reset_vim()
 			fnamemodify = function(path)
 				return path:match("([^/]+)$") or path
 			end,
+			glob2regpat = function(pattern)
+				local result = "^"
+				local i = 1
+				local n = #pattern
+				while i <= n do
+					local c = pattern:sub(i, i)
+					if c == "*" then
+						if i < n and pattern:sub(i + 1, i + 1) == "*" then
+							result = result .. ".*"
+							i = i + 2
+							if i <= n and pattern:sub(i, i) == "/" then
+								i = i + 1
+							end
+						else
+							result = result .. "[^/]*"
+							i = i + 1
+						end
+					elseif c == "?" then
+						result = result .. "[^/]"
+						i = i + 1
+					else
+						result = result .. (c:gsub("([^%w])", "%%%1"))
+						i = i + 1
+					end
+				end
+				return result .. "$"
+			end,
+			match = function(str, pattern)
+				local ok, pos = pcall(string.find, str, pattern)
+				if ok and pos then
+					return pos - 1
+				end
+				return -1
+			end,
+			strdisplaywidth = function(str)
+				return #str
+			end,
 		},
 		pesc = function(value)
 			return (value:gsub("([^%w])", "%%%1"))

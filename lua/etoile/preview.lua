@@ -101,7 +101,7 @@ local function tree_line_for(entry, depth)
 	return line .. entry.name, highlights
 end
 
-local function prepare_directory_preview_buffer(dir_path)
+local function prepare_directory_preview_buffer(dir_path, show_excluded)
 	renderer.setup_highlights()
 	local buf = vim.api.nvim_create_buf(false, true)
 	local lines = {}
@@ -113,7 +113,13 @@ local function prepare_directory_preview_buffer(dir_path)
 		lines = { "Directory preview is disabled" }
 	else
 		local function add_dir(dir, depth)
-			for _, entry in ipairs(scanner.list_dir(dir, { root = dir_path, exclude = config.options.search.exclude })) do
+			for _, entry in
+				ipairs(scanner.list_dir(dir, {
+					root = dir_path,
+					exclude = config.options.tree.exclude,
+					include_excluded = show_excluded,
+				}))
+			do
 				local line, highlights = tree_line_for(entry, depth)
 				table.insert(lines, line)
 				highlights_by_line[#lines] = highlights
@@ -148,9 +154,9 @@ local function prepare_directory_preview_buffer(dir_path)
 	return buf, true
 end
 
-local function prepare_preview_buffer(file_path, entry_type)
+local function prepare_preview_buffer(file_path, entry_type, show_excluded)
 	if entry_type == "directory" then
-		return prepare_directory_preview_buffer(file_path)
+		return prepare_directory_preview_buffer(file_path, show_excluded)
 	end
 
 	if not file_exists(file_path) then
@@ -308,7 +314,7 @@ end
 local function apply_preview_buffer(state, file_path, entry_type)
 	local previous_buf = state.preview_buf
 	local previous_buf_is_scratch = state.preview_buf_is_scratch
-	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type)
+	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
 	vim.api.nvim_win_set_buf(state.preview_win, buf)
 	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win, file_path))
 	apply_preview_options(state, file_path, entry_type)
@@ -364,7 +370,7 @@ function M.open(state, file_path, entry_type)
 		return
 	end
 
-	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type)
+	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
 	local win = vim.api.nvim_open_win(buf, false, preview_config(state.win, file_path))
 	state.preview_win = win
 	state.preview_buf = buf

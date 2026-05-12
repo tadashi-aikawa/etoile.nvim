@@ -44,6 +44,7 @@ local function entries_for(scope)
 		{ configured_key("search_clear"), "Clear etoile search highlights" },
 		{ configured_key("help"), "Show etoile keymaps" },
 		{ configured_key("close"), "Close etoile" },
+		{ configured_key("toggle_exclude"), "Toggle etoile excluded entries" },
 		{ "<C-o>", "Jump back within etoile" },
 		{ "<C-i>", "Jump forward within etoile" },
 	}

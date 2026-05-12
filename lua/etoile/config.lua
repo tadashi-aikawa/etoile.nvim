@@ -20,6 +20,7 @@ local M = {}
 ---@field reserve_preview_width boolean Shift the tree left so the preview can open on the right when true
 ---@field row number? Fixed editor-relative row; nil vertically centers the tree
 ---@field col number Editor-relative column used when position is "editor"
+---@field exclude string[] File and directory names (or glob patterns) to hide from the tree window and directory previews. Hidden entries can be toggled with the toggle_exclude keymap.
 
 ---@class etoile.Config.Preview.Directory
 ---@field enabled boolean Enable directory preview
@@ -56,9 +57,10 @@ local M = {}
 ---@field focus_toggle string Switch focus between the tree window and preview float
 ---@field focus_preview string Focus the preview float (mapped in the tree buffer)
 ---@field focus_tree string Focus the tree window (mapped in the preview buffer)
+---@field toggle_exclude string Toggle visibility of entries hidden by tree.exclude
 
 ---@class etoile.Config.Search
----@field exclude string[] Directory and file names to skip when rendering, searching, and rendering directory previews
+---@field exclude string[] File and directory names (or glob patterns) to skip when searching
 ---@field expand_matches boolean Expand parent directories for all matched entries before jumping to the match when true
 
 ---@class etoile.Config.GitStatus
@@ -84,6 +86,7 @@ local M = {}
 ---@field directory string Icon for collapsed directories
 ---@field directory_open string Icon for expanded directories
 ---@field git_status etoile.Config.Icons.GitStatus Git status icons shown in the left gutter
+---@field search_excluded string Icon shown in the left gutter for entries excluded from search by search.exclude
 
 ---@class etoile.Config
 ---@field root etoile.Config.Root Root directory resolution settings
@@ -116,6 +119,7 @@ local defaults = {
 		reserve_preview_width = true,
 		row = nil,
 		col = 4,
+		exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
 	},
 	preview = {
 		enabled = true,
@@ -151,6 +155,7 @@ local defaults = {
 		focus_toggle = "<C-w>w",
 		focus_preview = "<C-w>l",
 		focus_tree = "<C-w>h",
+		toggle_exclude = "<leader>i",
 	},
 	search = {
 		exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
@@ -178,6 +183,7 @@ local defaults = {
 			ignored = "",
 			conflicted = "",
 		},
+		search_excluded = "󰈉",
 	},
 	indent = 2,
 }

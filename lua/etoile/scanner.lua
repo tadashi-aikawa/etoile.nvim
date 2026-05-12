@@ -6,11 +6,16 @@ local uv = vim.uv or vim.loop
 
 local function should_exclude(name, rel, exclude)
 	for _, item in ipairs(exclude or {}) do
-		if name == item or rel == item or rel:match("^" .. vim.pesc(item) .. "/") then
+		local regex = vim.fn.glob2regpat(item)
+		if vim.fn.match(name, regex) >= 0 or vim.fn.match(rel, regex) >= 0 then
 			return true
 		end
 	end
 	return false
+end
+
+function M.matches_exclude(name, rel, exclude)
+	return should_exclude(name, rel, exclude)
 end
 
 local function entry_for(parent, name)
@@ -116,9 +121,12 @@ function M.list_dir(dir, opts)
 		end
 		local full_path = path.join(dir, name)
 		local rel = path.relative(full_path, opts.root or dir)
-		if not should_exclude(name, rel, opts.exclude) then
+		if opts.include_excluded or not should_exclude(name, rel, opts.exclude) then
 			local entry = entry_for(dir, name)
 			if entry then
+				if opts.include_excluded and should_exclude(name, rel, opts.exclude) then
+					entry.excluded = true
+				end
 				table.insert(entries, entry)
 			end
 		end

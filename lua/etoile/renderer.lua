@@ -1,6 +1,7 @@
 local config = require("etoile.config")
 local git_status = require("etoile.git_status")
 local icons = require("etoile.icons")
+local path = require("etoile.path")
 local scanner = require("etoile.scanner")
 
 local M = {}
@@ -66,6 +67,7 @@ function M.setup_highlights()
 	vim.api.nvim_set_hl(0, "EtoileGitRenamed", { default = true, link = "Identifier" })
 	vim.api.nvim_set_hl(0, "EtoileGitIgnored", { default = true, link = "Comment" })
 	vim.api.nvim_set_hl(0, "EtoileGitConflicted", { default = true, link = "Error" })
+	vim.api.nvim_set_hl(0, "EtoileSearchExcluded", { default = true, link = "Comment" })
 end
 
 local function git_highlight(status)
@@ -83,6 +85,11 @@ local function git_decoration(entry)
 
 	local status = entry.git_status
 	if not status then
+		if entry.search_excluded then
+			local icon = (config.options.icons or {}).search_excluded or "󰈉"
+			local suffix_width = math.max(1, left_padding - display_width(icon))
+			return { icon .. string.rep(" ", suffix_width), "EtoileSearchExcluded" }
+		end
 		return { string.rep(" ", left_padding), "Normal" }
 	end
 
@@ -232,9 +239,19 @@ function M.render(root, expanded, opts)
 		or git_status.collect(root, { show_ignored = config.options.git_status.show_ignored })
 
 	local function add_dir(dir, depth)
-		for _, entry in ipairs(scanner.list_dir(dir, { root = root, exclude = opts.exclude })) do
+		for _, entry in
+			ipairs(scanner.list_dir(dir, {
+				root = root,
+				exclude = opts.exclude,
+				include_excluded = opts.show_excluded,
+			}))
+		do
 			entry.open = entry.type == "directory" and expanded[entry.path] or false
 			entry.git_status = git_status.status_for(statuses, entry.path)
+			local rel = path.relative(entry.path, root)
+			if scanner.matches_exclude(entry.name, rel, opts.search_exclude) then
+				entry.search_excluded = true
+			end
 			local line, decoration = line_for(entry, depth)
 			entry.id = opts.id_for_path and opts.id_for_path(entry.path) or entry.path
 			entry.depth = depth
