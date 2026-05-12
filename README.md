@@ -55,6 +55,7 @@ TODO: Add a demo video after it is ready.
     -- "folke/snacks.nvim",
   },
   ---@class etoile.Config
+  ---@diagnostic disable: missing-fields
   opts = {
     -- See "Configuration Example" below.
   }
@@ -162,7 +163,7 @@ If `git_status.show_ignored = true`, ignored entries are also collected with `--
 Complete sample including all options and default values:
 
 ```lua
-require("etoile").setup({
+{
   root = {
     strategy = "git_or_cwd",
   },
@@ -246,7 +247,7 @@ require("etoile").setup({
     },
   },
   indent = 2,
-})
+}
 ```
 
 ## Options

@@ -1,100 +1,100 @@
 local M = {}
 
 ---@class etoile.Config.Root
----@field strategy "git_or_cwd"|string
+---@field strategy "git_or_cwd"|string Root resolution strategy; "git_or_cwd" uses the nearest Git root from the current buffer, falling back to cwd
 
 ---@class etoile.Config.Tree
----@field border string
----@field width_padding number
----@field left_padding number
----@field icon_width_padding number
----@field right_padding number
----@field height_ratio number
----@field max_height number
----@field max_height_ratio number
----@field min_height number
----@field min_height_ratio number
----@field min_width number
----@field max_width number
----@field position "source_window"|string
----@field reserve_preview_width boolean
----@field row number?
----@field col number
+---@field border string Border style for the tree window
+---@field width_padding number Extra width added to the tree window beyond the content width
+---@field left_padding number Left padding reserving room for Git status icons
+---@field icon_width_padding number Left padding reserving room for symlink and filetype icons rendered as virtual text
+---@field right_padding number Right padding added to the tree window
+---@field height_ratio number Preferred height as a ratio of the editor height
+---@field max_height number Maximum tree window height in lines (effective max uses the larger of size and ratio)
+---@field max_height_ratio number Maximum tree window height as a ratio (effective max uses the larger of size and ratio)
+---@field min_height number Minimum tree window height in lines (effective min uses the smaller of size and ratio)
+---@field min_height_ratio number Minimum tree window height as a ratio (effective min uses the smaller of size and ratio)
+---@field min_width number Minimum tree window width in columns
+---@field max_width number Maximum tree window width in columns
+---@field position "source_window"|string Window placement; "source_window" places the tree near the source window, "editor" uses a fixed col
+---@field reserve_preview_width boolean Shift the tree left so the preview can open on the right when true
+---@field row number? Fixed editor-relative row; nil vertically centers the tree
+---@field col number Editor-relative column used when position is "editor"
 
 ---@class etoile.Config.Preview.Directory
----@field enabled boolean
----@field max_depth number
+---@field enabled boolean Enable directory preview
+---@field max_depth number Maximum depth of the directory tree rendered in the preview; direct children of the preview target are depth 0
 
 ---@class etoile.Config.Preview
----@field enabled boolean
----@field border string
----@field min_width number
----@field max_width number
----@field width_ratio number
----@field max_height number
----@field max_height_ratio number
----@field min_height number
----@field min_height_ratio number
----@field height_ratio number
----@field debounce_ms number
----@field directory etoile.Config.Preview.Directory
+---@field enabled boolean Open the preview float automatically when etoile opens
+---@field border string Border style for the preview window
+---@field min_width number Minimum preview window width in columns
+---@field max_width number Maximum preview window width in columns
+---@field width_ratio number Preferred preview width as a ratio of available space
+---@field max_height number Maximum preview window height in lines (effective max uses the larger of size and ratio)
+---@field max_height_ratio number Maximum preview height as a ratio (effective max uses the larger of size and ratio)
+---@field min_height number Minimum preview window height in lines (effective min uses the smaller of size and ratio)
+---@field min_height_ratio number Minimum preview height as a ratio (effective min uses the smaller of size and ratio)
+---@field height_ratio number Preferred preview height as a ratio of the editor height
+---@field debounce_ms number Delay in ms before updating the preview on cursor move; set to 0 for immediate updates
+---@field directory etoile.Config.Preview.Directory Directory preview settings
 
 ---@class etoile.Config.Keymaps
----@field open string
----@field open_split string
----@field open_vsplit string
----@field open_tab string
----@field parent string
----@field child string
----@field preview string
----@field search string
----@field search_next string
----@field search_prev string
----@field search_clear string
----@field help string
----@field close string
----@field focus_toggle string
----@field focus_preview string
----@field focus_tree string
+---@field open string Open a file or expand/collapse a directory
+---@field open_split string Open the selected file in a horizontal split
+---@field open_vsplit string Open the selected file in a vertical split
+---@field open_tab string Open the selected file in a new tab
+---@field parent string Move the tree root to the parent directory
+---@field child string Move the tree root to the directory under the cursor
+---@field preview string Toggle the preview float
+---@field search string Search all entries under the current root
+---@field search_next string Jump to the next search result
+---@field search_prev string Jump to the previous search result
+---@field search_clear string Clear search highlights
+---@field help string Show tree/preview keymap help (mapped in both tree and preview buffers)
+---@field close string Close etoile
+---@field focus_toggle string Switch focus between the tree window and preview float
+---@field focus_preview string Focus the preview float (mapped in the tree buffer)
+---@field focus_tree string Focus the tree window (mapped in the preview buffer)
 
 ---@class etoile.Config.Search
----@field exclude string[]
----@field expand_matches boolean
+---@field exclude string[] Directory and file names to skip when rendering, searching, and rendering directory previews
+---@field expand_matches boolean Expand parent directories for all matched entries before jumping to the match when true
 
 ---@class etoile.Config.GitStatus
----@field show_ignored boolean
----@field sync_on_preview_write boolean
+---@field show_ignored boolean Show ignored files in the Git status gutter
+---@field sync_on_preview_write boolean Refresh the main tree's Git status after saving a preview buffer
 
 ---@class etoile.Config.Confirm
----@field delete boolean
----@field move boolean
----@field copy boolean
----@field create boolean
+---@field delete boolean Ask for confirmation before deleting files or directories
+---@field move boolean Ask for confirmation before moving or renaming files or directories, showing before and after paths
+---@field copy boolean Ask for confirmation before copying files or directories
+---@field create boolean Ask for confirmation before creating files or directories
 
 ---@class etoile.Config.Icons.GitStatus
----@field modified string
----@field added string
----@field deleted string
----@field renamed string
----@field ignored string
----@field conflicted string
+---@field modified string Icon for modified files
+---@field added string Icon for added files
+---@field deleted string Icon for deleted files
+---@field renamed string Icon for renamed files
+---@field ignored string Icon for ignored files
+---@field conflicted string Icon for conflicted files
 
 ---@class etoile.Config.Icons
----@field link string
----@field directory string
----@field directory_open string
----@field git_status etoile.Config.Icons.GitStatus
+---@field link string Icon for symbolic links
+---@field directory string Icon for collapsed directories
+---@field directory_open string Icon for expanded directories
+---@field git_status etoile.Config.Icons.GitStatus Git status icons shown in the left gutter
 
 ---@class etoile.Config
----@field root etoile.Config.Root
----@field tree etoile.Config.Tree
----@field preview etoile.Config.Preview
----@field keymaps etoile.Config.Keymaps
----@field search etoile.Config.Search
----@field git_status etoile.Config.GitStatus
----@field confirm etoile.Config.Confirm
----@field icons etoile.Config.Icons
----@field indent number
+---@field root etoile.Config.Root Root directory resolution settings
+---@field tree etoile.Config.Tree Main tree window settings
+---@field preview etoile.Config.Preview Preview float settings
+---@field keymaps etoile.Config.Keymaps Key mappings for tree and preview buffers
+---@field search etoile.Config.Search Search behavior settings
+---@field git_status etoile.Config.GitStatus Git status display settings
+---@field confirm etoile.Config.Confirm Confirmation dialog settings for file operations
+---@field icons etoile.Config.Icons Icon customization settings
+---@field indent number Number of spaces per tree depth level, used when rendering and interpreting edited indentation
 local defaults = {
 	root = {
 		strategy = "git_or_cwd",

@@ -54,6 +54,8 @@ TODO: 動画が準備できたら追加する。
     -- 任意。画像 preview が必要な場合のみ:
     -- "folke/snacks.nvim",
   },
+  ---@class etoile.Config
+  ---@diagnostic disable: missing-fields
   opts = {
     -- 後述の「設定例」を参照
   }
@@ -156,7 +158,7 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
 全設定を含むサンプル（デフォルト値）:
 
 ```lua
-require("etoile").setup({
+{
   root = {
     strategy = "git_or_cwd",
   },
@@ -240,7 +242,7 @@ require("etoile").setup({
     },
   },
   indent = 2,
-})
+}
 ```
 
 ## オプション
