@@ -249,11 +249,24 @@ local function entry_matches_search(entry, root, terms)
 	return entry.name:lower():find(last_term, 1, true) ~= nil
 end
 
-local function collect_search_matches(root, terms)
+local function collect_search_matches(root, terms, opts)
+	opts = opts or {}
 	local matches = {}
 
+	local exclude = config.options.search.exclude
+	if opts.tree_exclude and #opts.tree_exclude > 0 then
+		local merged = {}
+		for _, v in ipairs(exclude) do
+			merged[#merged + 1] = v
+		end
+		for _, v in ipairs(opts.tree_exclude) do
+			merged[#merged + 1] = v
+		end
+		exclude = merged
+	end
+
 	local function visit(dir)
-		for _, entry in ipairs(scanner.list_dir(dir, { root = root, exclude = config.options.search.exclude })) do
+		for _, entry in ipairs(scanner.list_dir(dir, { root = root, exclude = exclude })) do
 			if entry_matches_search(entry, root, terms) then
 				table.insert(matches, entry.path)
 			end
@@ -393,7 +406,9 @@ local function search(state)
 	state.search_matches = {}
 	state.search_index = 0
 	state.search = nil
-	state.search_matches = collect_search_matches(state.root, terms)
+	state.search_matches = collect_search_matches(state.root, terms, {
+		tree_exclude = not state.show_excluded and config.options.tree.exclude or nil,
+	})
 
 	if #state.search_matches == 0 then
 		vim.notify("No etoile search results: " .. query, vim.log.levels.INFO)
