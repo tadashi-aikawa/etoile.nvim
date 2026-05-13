@@ -2,14 +2,13 @@ local config = require("etoile.config")
 local help = require("etoile.help")
 local icons = require("etoile.icons")
 local layout = require("etoile.layout")
-local path = require("etoile.path")
 local renderer = require("etoile.renderer")
 local scanner = require("etoile.scanner")
 
 local M = {}
 local preview_ns = vim.api.nvim_create_namespace("etoile_preview")
 
-local function preview_config(main_win, file_path)
+local function preview_config(main_win)
 	local opts = config.options.preview
 	local columns = vim.o.columns
 	local lines = vim.o.lines
@@ -31,8 +30,6 @@ local function preview_config(main_win, file_path)
 		width = width,
 		height = height,
 		border = opts.border,
-		title = " " .. path.basename(file_path) .. " ",
-		title_pos = "left",
 	}
 end
 
@@ -346,7 +343,7 @@ local function apply_preview_buffer(state, file_path, entry_type)
 	local previous_buf_is_scratch = state.preview_buf_is_scratch
 	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
 	vim.api.nvim_win_set_buf(state.preview_win, buf)
-	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win, file_path))
+	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win))
 	apply_preview_options(state, file_path, entry_type)
 	state.preview_buf = buf
 	state.preview_buf_is_scratch = buf_is_scratch
@@ -367,7 +364,7 @@ local function apply_empty_preview_buffer(state, title)
 	local previous_buf_is_scratch = state.preview_buf_is_scratch
 	local buf = prepare_empty_preview_buffer()
 	vim.api.nvim_win_set_buf(state.preview_win, buf)
-	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win, title or ""))
+	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win))
 	apply_empty_preview_options(state)
 	state.preview_buf = buf
 	state.preview_buf_is_scratch = true
@@ -384,7 +381,7 @@ end
 
 local function resize_preview(state, file_path)
 	if valid_win(state.preview_win) and valid_win(state.win) then
-		vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win, file_path or state.preview_path or ""))
+		vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win))
 	end
 end
 
@@ -401,7 +398,7 @@ function M.open(state, file_path, entry_type)
 	end
 
 	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
-	local win = vim.api.nvim_open_win(buf, false, preview_config(state.win, file_path))
+	local win = vim.api.nvim_open_win(buf, false, preview_config(state.win))
 	state.preview_win = win
 	state.preview_buf = buf
 	state.preview_buf_is_scratch = buf_is_scratch

@@ -471,11 +471,11 @@ describe("etoile.preview", function()
 
 		assert.are.same({}, buffers[state.preview_buf].lines)
 		assert.are.same({ { win = 1, buf = state.preview_buf } }, set_win_bufs)
-		assert.are.equal(" new.lua ", win_configs[1].title)
+		assert.is_nil(win_configs[1].title)
 		assert.is_nil(buffers[previous_buf])
 	end)
 
-	it("clears an existing preview without keeping the previous title", function()
+	it("clears an existing preview without setting a title", function()
 		add_entry("/tmp/project", "src", "directory")
 		local config = require("etoile.config")
 		config.setup()
@@ -486,7 +486,7 @@ describe("etoile.preview", function()
 		preview.clear(state, "")
 
 		assert.are.same({}, buffers[state.preview_buf].lines)
-		assert.are.equal("  ", win_configs[1].title)
+		assert.is_nil(win_configs[1].title)
 	end)
 
 	it("sets conceallevel = 0 for a regular file preview", function()
