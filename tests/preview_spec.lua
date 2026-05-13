@@ -8,7 +8,10 @@ local set_win_configs
 local set_win_bufs
 local set_keymaps
 local deleted_keymaps
+local created_autocmds
+local cleared_autocmds
 local current_win
+local win_bufs
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -38,7 +41,12 @@ local function reset_vim()
 	set_win_bufs = {}
 	set_keymaps = {}
 	deleted_keymaps = {}
+	created_autocmds = {}
+	cleared_autocmds = {}
 	current_win = 1
+	win_bufs = {
+		[1] = 1,
+	}
 
 	_G.vim = {
 		o = {
@@ -193,16 +201,26 @@ local function reset_vim()
 				return win_configs[win]
 			end,
 			nvim_win_set_buf = function(win, buf)
+				win_bufs[win] = buf
 				table.insert(set_win_bufs, { win = win, buf = buf })
+			end,
+			nvim_win_get_buf = function(win)
+				return win_bufs[win]
 			end,
 			nvim_win_set_config = function(win, opts)
 				win_configs[win] = deepcopy(opts)
 				table.insert(set_win_configs, { win = win, opts = deepcopy(opts) })
 			end,
-			nvim_open_win = function()
+			nvim_open_win = function(buf)
+				win_bufs[1] = buf
 				return 1
 			end,
-			nvim_create_autocmd = function() end,
+			nvim_create_autocmd = function(event, opts)
+				table.insert(created_autocmds, { event = event, opts = deepcopy(opts) })
+			end,
+			nvim_clear_autocmds = function(opts)
+				table.insert(cleared_autocmds, deepcopy(opts))
+			end,
 			nvim_win_is_valid = function()
 				return true
 			end,
@@ -350,6 +368,30 @@ describe("etoile.preview", function()
 		assert.are.equal("Focus etoile main", set_keymaps[2].opts.desc)
 		assert.are.equal("<leader>?", set_keymaps[3].lhs)
 		assert.are.equal("Show etoile keymaps", set_keymaps[3].opts.desc)
+	end)
+
+	it("maps preview controls for another buffer opened in the preview window", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/new.lua", "file")
+		state.preview_win = 1
+		current_win = state.preview_win
+		win_bufs[state.preview_win] = 42
+
+		for _, autocmd in ipairs(created_autocmds) do
+			if vim.deepcopy(autocmd.event)[1] == "BufEnter" then
+				autocmd.opts.callback()
+				break
+			end
+		end
+
+		assert.are.equal(42, set_keymaps[#set_keymaps].opts.buffer)
+		assert.are.equal("<C-i>", set_keymaps[#set_keymaps].lhs)
+		assert.are.equal(42, set_keymaps[#set_keymaps - 4].opts.buffer)
+		assert.are.equal("<C-w>w", set_keymaps[#set_keymaps - 4].lhs)
 	end)
 
 	it("shows preview keymap help by default", function()

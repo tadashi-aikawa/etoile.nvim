@@ -261,6 +261,36 @@ local function map_preview_keys(state, buf)
 	state.preview_mapped_buf = buf
 end
 
+local function sync_preview_keys_for_current_window(state)
+	if not valid_win(state.preview_win) or vim.api.nvim_get_current_win() ~= state.preview_win then
+		return
+	end
+
+	local buf = vim.api.nvim_win_get_buf(state.preview_win)
+	map_preview_keys(state, buf)
+end
+
+local function clear_preview_window_key_sync(state)
+	if state.preview_key_sync_group then
+		pcall(vim.api.nvim_clear_autocmds, {
+			group = state.preview_key_sync_group,
+		})
+	end
+	state.preview_key_sync_group = nil
+end
+
+local function setup_preview_window_key_sync(state)
+	clear_preview_window_key_sync(state)
+
+	state.preview_key_sync_group = vim.api.nvim_create_augroup("etoile_preview_keys_" .. state.buf, { clear = true })
+	vim.api.nvim_create_autocmd({ "BufEnter", "WinEnter" }, {
+		group = state.preview_key_sync_group,
+		callback = function()
+			sync_preview_keys_for_current_window(state)
+		end,
+	})
+end
+
 local function clear_preview_write_sync(state)
 	if state.preview_write_sync_buf and vim.api.nvim_buf_is_valid(state.preview_write_sync_buf) then
 		pcall(vim.api.nvim_clear_autocmds, {
@@ -379,6 +409,7 @@ function M.open(state, file_path, entry_type)
 	state.preview_type = entry_type
 	apply_preview_options(state, file_path, entry_type)
 	map_preview_keys(state, buf)
+	setup_preview_window_key_sync(state)
 	setup_preview_write_sync(state, buf, buf_is_scratch)
 
 	vim.api.nvim_create_autocmd("WinClosed", {
@@ -386,6 +417,7 @@ function M.open(state, file_path, entry_type)
 		pattern = tostring(win),
 		callback = function()
 			unmap_preview_keys(state)
+			clear_preview_window_key_sync(state)
 			clear_preview_write_sync(state)
 			cleanup_preview_buffer(state)
 			state.preview_win = nil
@@ -462,6 +494,7 @@ function M.close(state)
 		vim.api.nvim_win_close(state.preview_win, true)
 	end
 	unmap_preview_keys(state)
+	clear_preview_window_key_sync(state)
 	clear_preview_write_sync(state)
 	cleanup_preview_buffer(state)
 	state.preview_win = nil
