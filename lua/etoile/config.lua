@@ -162,7 +162,7 @@ local defaults = {
 		toggle_exclude = "<leader>i",
 	},
 	search = {
-		exclude = { ".git", "node_modules", ".cache", "venv", ".venv" },
+		exclude = { ".git", "node_modules", ".cache", "venv", ".venv", ".output", "dist", "build" },
 		expand_matches = true,
 	},
 	git_status = {
