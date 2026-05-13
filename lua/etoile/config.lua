@@ -47,6 +47,8 @@ local M = {}
 ---@field open_tab string Open the selected file in a new tab
 ---@field parent string Move the tree root to the parent directory
 ---@field child string Move the tree root to the directory under the cursor
+---@field root_history_back string Move backward through parent/child root history
+---@field root_history_forward string Move forward through parent/child root history
 ---@field preview string Toggle the preview float
 ---@field search string Search all entries under the current root
 ---@field search_next string Jump to the next search result
@@ -145,6 +147,8 @@ local defaults = {
 		open_tab = "<C-t>",
 		parent = "-",
 		child = "<C-]>",
+		root_history_back = "<C-o>",
+		root_history_forward = "<C-i>",
 		preview = "<C-p>",
 		search = "<leader>s",
 		search_next = "<leader>n",

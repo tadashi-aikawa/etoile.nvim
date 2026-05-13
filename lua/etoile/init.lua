@@ -199,6 +199,77 @@ local function refresh_git_status(state)
 	end
 end
 
+local sync_open_preview
+
+local function root_history_entry(state)
+	return {
+		root = state.root,
+		expanded = vim.deepcopy(state.expanded or {}),
+		focus_path = state.focus_path,
+		cursor = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win) or nil,
+	}
+end
+
+local function save_current_root_history_entry(state)
+	if not state.root_history or not state.root_history_index then
+		return
+	end
+	state.root_history[state.root_history_index] = root_history_entry(state)
+end
+
+local function push_root_history(state, root, opts)
+	save_current_root_history_entry(state)
+	while #state.root_history > state.root_history_index do
+		table.remove(state.root_history)
+	end
+	table.insert(state.root_history, {
+		root = root,
+		expanded = vim.deepcopy(opts.expanded or {}),
+		focus_path = opts.focus_path,
+		cursor = opts.cursor,
+	})
+	state.root_history_index = #state.root_history
+end
+
+local function restore_root_history(state, index)
+	local entry = state.root_history and state.root_history[index]
+	if not entry then
+		return false
+	end
+	save_current_root_history_entry(state)
+	state.root_history_index = index
+	state.root = entry.root
+	state.expanded = vim.deepcopy(entry.expanded or {})
+	state.focus_path = entry.focus_path
+	refresh_without_undo(state)
+	if entry.cursor and valid_win(state.win) then
+		pcall(vim.api.nvim_win_set_cursor, state.win, entry.cursor)
+	end
+	sync_open_preview(state)
+	return true
+end
+
+local function root_history_target(state, lhs)
+	if not state.root_history or not state.root_history_index then
+		return nil
+	end
+	if lhs == "<C-o>" and state.root_history_index > 1 then
+		return state.root_history_index - 1
+	end
+	if lhs == "<C-i>" and state.root_history_index < #state.root_history then
+		return state.root_history_index + 1
+	end
+	return nil
+end
+
+local function jump_root_history(state, lhs)
+	local target = root_history_target(state, lhs)
+	if not target then
+		return false
+	end
+	return restore_root_history(state, target)
+end
+
 local function reveal_path(state, target)
 	expand_ancestors(state, target)
 	state.focus_path = target
@@ -319,7 +390,7 @@ local function open_entry(state, command)
 	vim.cmd((command or "edit") .. " " .. vim.fn.fnameescape(entry.path))
 end
 
-local function sync_open_preview(state)
+sync_open_preview = function(state)
 	if not preview.is_open(state) then
 		return
 	end
@@ -334,7 +405,12 @@ end
 
 local function parent_root(state)
 	local previous_root = state.root
-	state.root = path.dirname(state.root)
+	local next_root = path.dirname(state.root)
+	push_root_history(state, next_root, {
+		expanded = {},
+		focus_path = previous_root,
+	})
+	state.root = next_root
 	state.expanded = {}
 	state.focus_path = previous_root
 	refresh(state)
@@ -346,6 +422,10 @@ local function child_root(state)
 	if not entry or entry.type ~= "directory" then
 		return
 	end
+	push_root_history(state, entry.path, {
+		expanded = {},
+		focus_path = nil,
+	})
 	state.root = entry.path
 	state.expanded = {}
 	state.focus_path = nil
@@ -516,21 +596,8 @@ local function map(buf, lhs, rhs, desc)
 	vim.keymap.set("n", lhs, rhs, { buffer = buf, silent = true, desc = desc })
 end
 
-local function jump_within_main(state, lhs)
-	local cursor = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win) or nil
-	local keys = vim.api.nvim_replace_termcodes(lhs, true, false, true)
-	vim.api.nvim_feedkeys(keys, "nx", false)
-
-	vim.schedule(function()
-		if not valid_win(state.win) or vim.api.nvim_win_get_buf(state.win) == state.buf then
-			return
-		end
-
-		vim.api.nvim_win_set_buf(state.win, state.buf)
-		if cursor then
-			pcall(vim.api.nvim_win_set_cursor, state.win, cursor)
-		end
-	end)
+local function move_root_history(state, lhs)
+	jump_root_history(state, lhs)
 end
 
 local function sync_decorations(state)
@@ -590,12 +657,12 @@ local function setup_buffer(state)
 	pcall(vim.api.nvim_buf_set_name, state.buf, "etoile://" .. state.root)
 
 	local keys = config.options.keymaps
-	map(state.buf, "<C-o>", function()
-		jump_within_main(state, "<C-o>")
-	end, "Jump back within etoile")
-	map(state.buf, "<C-i>", function()
-		jump_within_main(state, "<C-i>")
-	end, "Jump forward within etoile")
+	map(state.buf, keys.root_history_back, function()
+		move_root_history(state, "<C-o>")
+	end, "Move backward through etoile root history")
+	map(state.buf, keys.root_history_forward, function()
+		move_root_history(state, "<C-i>")
+	end, "Move forward through etoile root history")
 	map(state.buf, keys.open, function()
 		open_entry(state)
 	end, "Open etoile entry")
@@ -697,6 +764,15 @@ function M.open(opts)
 		search = nil,
 		show_excluded = false,
 	}
+	state.root_history = {
+		{
+			root = state.root,
+			expanded = vim.deepcopy(state.expanded),
+			focus_path = state.focus_path,
+			cursor = nil,
+		},
+	}
+	state.root_history_index = 1
 	state.resize_main = function()
 		if valid_win(state.win) then
 			vim.api.nvim_win_set_config(state.win, tree_config(state))
@@ -728,6 +804,7 @@ function M.open(opts)
 	vim.api.nvim_buf_set_lines(state.buf, 0, -1, false, state.rendered.lines)
 	renderer.decorate(state.buf, state.rendered.entries, state.search)
 	state.sync_suspended = false
+	vim.api.nvim_set_option_value("modified", false, { buf = state.buf })
 	state.win = vim.api.nvim_open_win(state.buf, true, tree_config(state))
 	vim.wo[state.win].conceallevel = 2
 	vim.wo[state.win].concealcursor = "nvic"

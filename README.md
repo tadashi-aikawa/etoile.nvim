@@ -117,7 +117,7 @@ require("etoile").open({ path = "/path/to/project" })
 | `<leader>?` | Show tree/preview keymap help |
 | `q` | Close etoile |
 | `<leader>i` | Toggle visibility of entries hidden by `tree.exclude` |
-| `<C-o>` / `<C-i>` | Jump backward/forward while staying in the etoile window |
+| `<C-o>` / `<C-i>` | Move backward/forward through parent/child root history |
 
 ### Editing the Tree
 
@@ -212,6 +212,8 @@ Complete sample including all options and default values:
     open_tab = "<C-t>",
     parent = "-",
     child = "<C-]>",
+    root_history_back = "<C-o>",
+    root_history_forward = "<C-i>",
     preview = "<C-p>",
     search = "<leader>s",
     search_next = "<leader>n",
@@ -299,7 +301,7 @@ All configurable mappings are buffer-local. `focus_toggle` switches between the 
 
 `open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
 
-`<C-o>` and `<C-i>` are always mapped internally to keep jump navigation from accidentally replacing the etoile window with another buffer.
+`root_history_back` and `root_history_forward` move through parent/child root history. Etoile does not use Neovim's normal jumplist inside the tree buffer for these actions.
 
 ### search
 

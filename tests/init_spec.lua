@@ -16,6 +16,9 @@ local last_search
 local opened_win_configs
 local set_win_configs
 local highlights
+local rendered_entries_by_root
+local last_render_root
+local notifications
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -54,6 +57,9 @@ local function reset_vim()
 	opened_win_configs = {}
 	set_win_configs = {}
 	highlights = {}
+	rendered_entries_by_root = nil
+	last_render_root = nil
+	notifications = {}
 
 	_G.vim = {
 		o = {
@@ -191,7 +197,9 @@ local function reset_vim()
 				INFO = "INFO",
 			},
 		},
-		notify = function() end,
+		notify = function(message, level)
+			table.insert(notifications, { message = message, level = level })
+		end,
 		schedule = function(callback)
 			callback()
 		end,
@@ -236,18 +244,20 @@ local function reset_vim()
 		end,
 	}
 	package.loaded["etoile.renderer"] = {
-		render = function(_, expanded, opts)
+		render = function(root, expanded, opts)
+			last_render_root = root
 			last_render_expanded = deepcopy(expanded or {})
+			local entries = rendered_entries_by_root and rendered_entries_by_root[root] or rendered_entries
 			if opts and opts.id_for_path then
-				for _, entry in ipairs(rendered_entries) do
+				for _, entry in ipairs(entries) do
 					entry.id = opts.id_for_path(entry.path)
 				end
 			end
 			return {
 				lines = vim.tbl_map(function(entry)
 					return string.rep(" ", (entry.depth or 0) * 2) .. entry.id .. " " .. entry.name
-				end, rendered_entries),
-				entries = rendered_entries,
+				end, entries),
+				entries = entries,
 				max_width = 8,
 			}
 		end,
@@ -306,6 +316,27 @@ describe("etoile", function()
 		assert.are.equal("Open etoile entry in horizontal split", keymaps["<C-x>"].opts.desc)
 		assert.are.equal("Open etoile entry in vertical split", keymaps["<C-v>"].opts.desc)
 		assert.are.equal("Open etoile entry in new tab", keymaps["<C-t>"].opts.desc)
+	end)
+
+	it("maps root history keys from config", function()
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+			keymaps = {
+				root_history_back = "H",
+				root_history_forward = "L",
+			},
+		})
+		etoile.open({
+			path = "/tmp/project",
+		})
+
+		assert.are.equal("Move backward through etoile root history", keymaps.H.opts.desc)
+		assert.are.equal("Move forward through etoile root history", keymaps.L.opts.desc)
+		assert.is_nil(keymaps["<C-o>"])
+		assert.is_nil(keymaps["<C-i>"])
 	end)
 
 	it("shows tree keymap help by default", function()
@@ -532,5 +563,124 @@ describe("etoile", function()
 		assert.is_true(last_search.matches_by_path["/tmp/project/dir"])
 		assert.is_true(last_search.matches_by_path["/tmp/project/dir/ddd.d"])
 		assert.is_nil(last_search.matches_by_path["/tmp/project/dir/ccc.c"])
+	end)
+
+	it("moves backward and forward through child root history", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {
+				{
+					id = "/tmp/project/dir/file.lua",
+					path = "/tmp/project/dir/file.lua",
+					name = "file.lua",
+					type = "file",
+				},
+			},
+		}
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+
+		keymaps["<C-]>"].rhs()
+
+		assert.are.equal("/tmp/project/dir", last_render_root)
+
+		keymaps["<C-o>"].rhs()
+
+		assert.are.equal("/tmp/project", last_render_root)
+
+		keymaps["<C-i>"].rhs()
+
+		assert.are.equal("/tmp/project/dir", last_render_root)
+	end)
+
+	it("moves back from a parent root to the previous root and focuses it", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/file.lua", path = "/tmp/project/file.lua", name = "file.lua", type = "file" },
+			},
+			["/tmp"] = {
+				{ id = "/tmp/project", path = "/tmp/project", name = "project", type = "directory" },
+			},
+		}
+		open_etoile()
+
+		keymaps["-"].rhs()
+
+		assert.are.equal("/tmp", last_render_root)
+		assert.are.same({ 1, 0 }, set_cursors[#set_cursors])
+
+		keymaps["<C-o>"].rhs()
+
+		assert.are.equal("/tmp/project", last_render_root)
+	end)
+
+	it("does nothing at root history edges", function()
+		open_etoile()
+
+		keymaps["<C-o>"].rhs()
+		keymaps["<C-i>"].rhs()
+
+		assert.are.equal("/tmp/project", last_render_root)
+		assert.are.equal(0, #notifications)
+	end)
+
+	it("moves child root without a modified guard warning", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {
+				{
+					id = "/tmp/project/dir/file.lua",
+					path = "/tmp/project/dir/file.lua",
+					name = "file.lua",
+					type = "file",
+				},
+			},
+		}
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+
+		keymaps["<C-]>"].rhs()
+
+		assert.are.equal("/tmp/project/dir", last_render_root)
+		assert.are.equal(0, #notifications)
+	end)
+
+	it("drops forward root history after branching to another child root", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+				{ id = "/tmp/project/other", path = "/tmp/project/other", name = "other", type = "directory" },
+			},
+			["/tmp/project/dir"] = {
+				{
+					id = "/tmp/project/dir/file.lua",
+					path = "/tmp/project/dir/file.lua",
+					name = "file.lua",
+					type = "file",
+				},
+			},
+			["/tmp/project/other"] = {
+				{
+					id = "/tmp/project/other/file.lua",
+					path = "/tmp/project/other/file.lua",
+					name = "file.lua",
+					type = "file",
+				},
+			},
+		}
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+		keymaps["<C-]>"].rhs()
+		keymaps["<C-o>"].rhs()
+		current_entry = { path = "/tmp/project/other", name = "other", type = "directory" }
+
+		keymaps["<C-]>"].rhs()
+		keymaps["<C-i>"].rhs()
+
+		assert.are.equal("/tmp/project/other", last_render_root)
 	end)
 end)
