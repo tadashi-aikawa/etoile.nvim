@@ -2,6 +2,7 @@ local config = require("etoile.config")
 local editor = require("etoile.editor")
 local help = require("etoile.help")
 local layout = require("etoile.layout")
+local pending = require("etoile.pending")
 local path = require("etoile.path")
 local preview = require("etoile.preview")
 local renderer = require("etoile.renderer")
@@ -147,7 +148,13 @@ local function id_for_path(state, entry_path)
 	return id
 end
 
-local function refresh(state)
+local collect_pending_edits
+
+local function refresh(state, opts)
+	opts = opts or {}
+	if opts.collect_pending ~= false and collect_pending_edits then
+		collect_pending_edits(state)
+	end
 	state.rendered = renderer.render(state.root, state.expanded, {
 		exclude = config.options.tree.exclude,
 		show_excluded = state.show_excluded,
@@ -155,6 +162,7 @@ local function refresh(state)
 		id_for_path = function(entry_path)
 			return id_for_path(state, entry_path)
 		end,
+		pending_ops = state.pending_ops,
 	})
 	for _, entry in ipairs(state.rendered.entries) do
 		state.types_by_id[entry.id] = entry.type
@@ -178,10 +186,10 @@ local function refresh(state)
 	end
 end
 
-local function refresh_without_undo(state)
+local function refresh_without_undo(state, opts)
 	local undolevels = vim.api.nvim_get_option_value("undolevels", { scope = "global" })
 	vim.api.nvim_set_option_value("undolevels", -1, { buf = state.buf })
-	local ok, err = pcall(refresh, state)
+	local ok, err = pcall(refresh, state, opts)
 	vim.api.nvim_set_option_value("undolevels", undolevels, { buf = state.buf })
 	if not ok then
 		error(err)
@@ -200,6 +208,19 @@ local function refresh_git_status(state)
 end
 
 local sync_open_preview
+
+collect_pending_edits = function(state)
+	if not state.buf or not state.snapshot then
+		return {}
+	end
+	local lines = renderer.lines_with_ids(state.buf)
+	local ops = editor.diff(state.root, state.snapshot, lines, {
+		paths_by_id = state.paths_by_id,
+		types_by_id = state.types_by_id,
+	})
+	state.pending_ops = pending.merge(state.pending_ops, ops)
+	return ops
+end
 
 local function root_history_entry(state)
 	return {
@@ -236,12 +257,13 @@ local function restore_root_history(state, index)
 	if not entry then
 		return false
 	end
+	collect_pending_edits(state)
 	save_current_root_history_entry(state)
 	state.root_history_index = index
 	state.root = entry.root
 	state.expanded = vim.deepcopy(entry.expanded or {})
 	state.focus_path = entry.focus_path
-	refresh_without_undo(state)
+	refresh_without_undo(state, { collect_pending = false })
 	if entry.cursor and valid_win(state.win) then
 		pcall(vim.api.nvim_win_set_cursor, state.win, entry.cursor)
 	end
@@ -404,6 +426,7 @@ sync_open_preview = function(state)
 end
 
 local function parent_root(state)
+	collect_pending_edits(state)
 	local previous_root = state.root
 	local next_root = path.dirname(state.root)
 	push_root_history(state, next_root, {
@@ -413,7 +436,7 @@ local function parent_root(state)
 	state.root = next_root
 	state.expanded = {}
 	state.focus_path = previous_root
-	refresh(state)
+	refresh(state, { collect_pending = false })
 	sync_open_preview(state)
 end
 
@@ -422,6 +445,7 @@ local function child_root(state)
 	if not entry or entry.type ~= "directory" then
 		return
 	end
+	collect_pending_edits(state)
 	push_root_history(state, entry.path, {
 		expanded = {},
 		focus_path = nil,
@@ -429,7 +453,7 @@ local function child_root(state)
 	state.root = entry.path
 	state.expanded = {}
 	state.focus_path = nil
-	refresh(state)
+	refresh(state, { collect_pending = false })
 	sync_open_preview(state)
 end
 
@@ -438,10 +462,8 @@ local function save_changes(state)
 	local cursor_line = valid_win(state.win) and vim.api.nvim_win_get_cursor(state.win)[1] or nil
 	local cursor_target_path = editor.path_at_line(state.root, lines, cursor_line)
 	local edited_expanded = editor.expanded_paths(state.root, lines)
-	local ops = editor.diff(state.root, state.snapshot, lines, {
-		paths_by_id = state.paths_by_id,
-		types_by_id = state.types_by_id,
-	})
+	collect_pending_edits(state)
+	local ops = state.pending_ops or {}
 	local ok, err = editor.apply(ops, {
 		confirm_delete = config.options.confirm.delete,
 		confirm_move = config.options.confirm.move,
@@ -456,7 +478,8 @@ local function save_changes(state)
 		return
 	end
 	if err == "Apply reverted" then
-		refresh(state)
+		state.pending_ops = {}
+		refresh(state, { collect_pending = false })
 		sync_open_preview(state)
 		return
 	end
@@ -466,9 +489,12 @@ local function save_changes(state)
 	expand_ancestors(state, cursor_target_path)
 	state.focus_path = ok and cursor_target_path or nil
 	if #ops > 0 then
-		refresh_without_undo(state)
+		if ok then
+			state.pending_ops = {}
+		end
+		refresh_without_undo(state, { collect_pending = false })
 	else
-		refresh(state)
+		refresh(state, { collect_pending = false })
 	end
 end
 
@@ -758,6 +784,7 @@ function M.open(opts)
 		ids_by_path = {},
 		paths_by_id = {},
 		types_by_id = {},
+		pending_ops = {},
 		source_win = vim.api.nvim_get_current_win(),
 		search_matches = {},
 		search_index = 0,

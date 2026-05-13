@@ -2,6 +2,7 @@ local config = require("etoile.config")
 local help = require("etoile.help")
 local icons = require("etoile.icons")
 local layout = require("etoile.layout")
+local pending = require("etoile.pending")
 local renderer = require("etoile.renderer")
 local scanner = require("etoile.scanner")
 
@@ -115,7 +116,7 @@ local function tree_line_for(entry, depth)
 	return line .. entry.name, highlights
 end
 
-local function prepare_directory_preview_buffer(dir_path, show_excluded)
+local function prepare_directory_preview_buffer(dir_path, show_excluded, pending_ops)
 	renderer.setup_highlights()
 	local buf = vim.api.nvim_create_buf(false, true)
 	local lines = {}
@@ -127,11 +128,13 @@ local function prepare_directory_preview_buffer(dir_path, show_excluded)
 		lines = { "Directory preview is disabled" }
 	else
 		local function add_dir(dir, depth)
+			local list_dir = pending_ops and #pending_ops > 0 and pending.list_dir or scanner.list_dir
 			for _, entry in
-				ipairs(scanner.list_dir(dir, {
+				ipairs(list_dir(dir, {
 					root = dir_path,
 					exclude = config.options.tree.exclude,
 					include_excluded = show_excluded,
+					pending_ops = pending_ops,
 				}))
 			do
 				local line, highlights = tree_line_for(entry, depth)
@@ -168,9 +171,9 @@ local function prepare_directory_preview_buffer(dir_path, show_excluded)
 	return buf, true
 end
 
-local function prepare_preview_buffer(file_path, entry_type, show_excluded)
+local function prepare_preview_buffer(file_path, entry_type, show_excluded, pending_ops)
 	if entry_type == "directory" then
-		return prepare_directory_preview_buffer(file_path, show_excluded)
+		return prepare_directory_preview_buffer(file_path, show_excluded, pending_ops)
 	end
 
 	if not file_exists(file_path) then
@@ -365,7 +368,7 @@ end
 local function apply_preview_buffer(state, file_path, entry_type)
 	local previous_buf = state.preview_buf
 	local previous_buf_is_scratch = state.preview_buf_is_scratch
-	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
+	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded, state.pending_ops)
 	vim.api.nvim_win_set_buf(state.preview_win, buf)
 	vim.api.nvim_win_set_config(state.preview_win, preview_config(state.win))
 	apply_preview_options(state, file_path, entry_type)
@@ -421,7 +424,7 @@ function M.open(state, file_path, entry_type)
 		return
 	end
 
-	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded)
+	local buf, buf_is_scratch = prepare_preview_buffer(file_path, entry_type, state.show_excluded, state.pending_ops)
 	local win = vim.api.nvim_open_win(buf, false, preview_config(state.win))
 	state.preview_win = win
 	state.preview_buf = buf
@@ -461,6 +464,10 @@ function M.sync(state, file_path, entry_type)
 		return
 	end
 	if state.preview_path == file_path and state.preview_type == entry_type then
+		if entry_type == "directory" then
+			M.open(state, file_path, entry_type)
+			return
+		end
 		if
 			entry_type == "file"
 			and state.preview_buf_is_scratch

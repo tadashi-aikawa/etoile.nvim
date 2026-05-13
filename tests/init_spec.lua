@@ -19,6 +19,9 @@ local highlights
 local rendered_entries_by_root
 local last_render_root
 local notifications
+local editor_diff
+local last_apply_ops
+local apply_result
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -60,6 +63,13 @@ local function reset_vim()
 	rendered_entries_by_root = nil
 	last_render_root = nil
 	notifications = {}
+	last_apply_ops = nil
+	apply_result = { true, nil }
+	editor_diff = function()
+		return {
+			{ type = "create", path = "/tmp/project/ddd.md", entry_type = "file" },
+		}
+	end
 
 	_G.vim = {
 		o = {
@@ -217,18 +227,21 @@ local function reset_vim()
 		end,
 		path_at_line = function(root, lines, line)
 			local raw = lines[line] and lines[line].line
-			return raw and (root .. "/" .. raw:match("%S+")) or nil
+			local name = raw and raw:match("%S+")
+			return name and (root .. "/" .. name) or nil
 		end,
 		expanded_paths = function()
 			return {}
 		end,
-		diff = function()
-			return {
-				{ type = "create", path = "/tmp/project/ddd.md", entry_type = "file" },
-			}
+		diff = function(...)
+			return editor_diff(...)
 		end,
-		apply = function()
-			return true, nil
+		apply = function(ops)
+			last_apply_ops = deepcopy(ops)
+			return apply_result[1], apply_result[2]
+		end,
+		filter_redundant_ops = function(ops)
+			return ops
 		end,
 	}
 	package.loaded["etoile.preview"] = {
@@ -247,16 +260,39 @@ local function reset_vim()
 		render = function(root, expanded, opts)
 			last_render_root = root
 			last_render_expanded = deepcopy(expanded or {})
-			local entries = rendered_entries_by_root and rendered_entries_by_root[root] or rendered_entries
+			local entries = deepcopy(rendered_entries_by_root and rendered_entries_by_root[root] or rendered_entries)
+			for _, op in ipairs((opts and opts.pending_ops) or {}) do
+				if op.type == "delete" then
+					local kept = {}
+					for _, entry in ipairs(entries) do
+						if entry.path ~= op.path then
+							table.insert(kept, entry)
+						end
+					end
+					entries = kept
+				end
+				if op.type == "create" and root == op.path:match("^(.*)/[^/]+$") then
+					table.insert(entries, {
+						id = op.path,
+						path = op.path,
+						name = op.path:match("([^/]+)$"),
+						type = op.entry_type,
+					})
+				end
+			end
 			if opts and opts.id_for_path then
 				for _, entry in ipairs(entries) do
 					entry.id = opts.id_for_path(entry.path)
 				end
 			end
+			local lines = vim.tbl_map(function(entry)
+				return string.rep(" ", (entry.depth or 0) * 2) .. entry.id .. " " .. entry.name
+			end, entries)
+			if #lines == 0 then
+				lines = { "" }
+			end
 			return {
-				lines = vim.tbl_map(function(entry)
-					return string.rep(" ", (entry.depth or 0) * 2) .. entry.id .. " " .. entry.name
-				end, entries),
+				lines = lines,
 				entries = entries,
 				max_width = 8,
 			}
@@ -647,6 +683,152 @@ describe("etoile", function()
 
 		assert.are.equal("/tmp/project/dir", last_render_root)
 		assert.are.equal(0, #notifications)
+	end)
+
+	it("keeps pending edits when toggling a directory without changing root", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/remove.md", path = "/tmp/project/remove.md", name = "remove.md", type = "file" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
+			}
+		end
+		open_etoile()
+		buffer_lines = { "000001 dir" }
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+
+		keymaps["<CR>"].rhs()
+
+		assert.are.same({ "000001 dir" }, buffer_lines)
+	end)
+
+	it("keeps pending edits when search refreshes the tree", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{ id = "/tmp/project/remove.md", path = "/tmp/project/remove.md", name = "remove.md", type = "file" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
+			}
+		end
+		package.loaded["etoile.scanner"].list_dir = function(dir)
+			if dir == "/tmp/project" then
+				return {
+					{ path = "/tmp/project/dir", name = "dir", type = "directory" },
+				}
+			end
+			return {}
+		end
+		input_value = "dir"
+		open_etoile()
+		buffer_lines = { "000001 dir" }
+
+		keymaps["<leader>s"].rhs()
+
+		assert.are.same({ "000001 dir" }, buffer_lines)
+	end)
+
+	it("keeps pending created entries visible after moving into a child root", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {},
+		}
+		editor_diff = function(root)
+			if root == "/tmp/project" then
+				return {
+					{ type = "create", path = "/tmp/project/dir/child.md", entry_type = "file" },
+				}
+			end
+			return {}
+		end
+		open_etoile()
+		buffer_lines = { "000001 dir", "  child.md" }
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+
+		keymaps["<C-]>"].rhs()
+
+		assert.are.equal("/tmp/project/dir", last_render_root)
+		assert.are.same({ "000002 child.md" }, buffer_lines)
+	end)
+
+	it("applies accumulated pending edits after moving roots", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {},
+		}
+		editor_diff = function(root)
+			if root == "/tmp/project" then
+				return {
+					{ type = "create", path = "/tmp/project/dir/child.md", entry_type = "file" },
+				}
+			end
+			return {}
+		end
+		open_etoile()
+		buffer_lines = { "000001 dir", "  child.md" }
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+		keymaps["<C-]>"].rhs()
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({
+			{ type = "create", path = "/tmp/project/dir/child.md", entry_type = "file" },
+		}, last_apply_ops)
+	end)
+
+	it("clears accumulated pending edits when save confirmation reverts", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {},
+		}
+		editor_diff = function(root)
+			if root == "/tmp/project" then
+				return {
+					{ type = "create", path = "/tmp/project/dir/child.md", entry_type = "file" },
+				}
+			end
+			return {}
+		end
+		apply_result = { false, "Apply reverted" }
+		open_etoile()
+		buffer_lines = { "000001 dir", "  child.md" }
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+		keymaps["<C-]>"].rhs()
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({ "" }, buffer_lines)
+	end)
+
+	it("keeps a canceled pending delete on the next save", function()
+		rendered_entries = {
+			{ id = "/tmp/project/remove.md", path = "/tmp/project/remove.md", name = "remove.md", type = "file" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
+			}
+		end
+		apply_result = { false, "Apply canceled" }
+		open_etoile()
+		buffer_lines = { "" }
+
+		autocmds.BufWriteCmd.callback()
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({
+			{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
+		}, last_apply_ops)
+		assert.are.same({ "" }, buffer_lines)
 	end)
 
 	it("drops forward root history after branching to another child root", function()

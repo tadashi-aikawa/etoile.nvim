@@ -1,6 +1,7 @@
 local config = require("etoile.config")
 local git_status = require("etoile.git_status")
 local icons = require("etoile.icons")
+local pending = require("etoile.pending")
 local path = require("etoile.path")
 local scanner = require("etoile.scanner")
 
@@ -239,11 +240,13 @@ function M.render(root, expanded, opts)
 		or git_status.collect(root, { show_ignored = config.options.git_status.show_ignored })
 
 	local function add_dir(dir, depth)
+		local list_dir = opts.pending_ops and #opts.pending_ops > 0 and pending.list_dir or scanner.list_dir
 		for _, entry in
-			ipairs(scanner.list_dir(dir, {
+			ipairs(list_dir(dir, {
 				root = root,
 				exclude = opts.exclude,
 				include_excluded = opts.show_excluded,
+				pending_ops = opts.pending_ops,
 			}))
 		do
 			entry.open = entry.type == "directory" and expanded[entry.path] or false
@@ -253,7 +256,8 @@ function M.render(root, expanded, opts)
 				entry.search_excluded = true
 			end
 			local line, decoration = line_for(entry, depth)
-			entry.id = opts.id_for_path and opts.id_for_path(entry.path) or entry.path
+			entry.id = opts.id_for_path and opts.id_for_path(entry.source_path or entry.path)
+				or (entry.source_path or entry.path)
 			entry.depth = depth
 			entry.display_line = line
 			entry.decoration = decoration

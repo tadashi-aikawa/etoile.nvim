@@ -106,6 +106,8 @@ local function sort_entries(entries)
 	return entries
 end
 
+M.sort_entries = sort_entries
+
 function M.list_dir(dir, opts)
 	opts = opts or {}
 	local scan = uv.fs_scandir(dir)

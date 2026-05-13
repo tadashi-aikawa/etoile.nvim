@@ -254,6 +254,7 @@ local function reset_vim()
 	package.loaded["etoile.help"] = nil
 	package.loaded["etoile.renderer"] = nil
 	package.loaded["etoile.icons"] = nil
+	package.loaded["etoile.pending"] = nil
 	package.loaded["etoile.scanner"] = nil
 	package.loaded["etoile.path"] = nil
 	package.loaded["etoile.config"] = nil
@@ -281,6 +282,14 @@ local function open_directory_preview(opts)
 	local preview = require("etoile.preview")
 	preview.open({ win = 1, buf = 1 }, "/tmp/project", "directory")
 	return buffers[1].lines
+end
+
+local function open_directory_preview_with_state(state, opts)
+	local config = require("etoile.config")
+	config.setup(opts)
+	local preview = require("etoile.preview")
+	preview.open(state, "/tmp/project", "directory")
+	return buffers[state.preview_buf].lines
 end
 
 describe("etoile.preview", function()
@@ -332,6 +341,52 @@ describe("etoile.preview", function()
 		})
 
 		assert.are.same({ "Directory preview is disabled" }, lines)
+	end)
+
+	it("includes pending created entries in directory preview", function()
+		add_entry("/tmp/project", "src", "directory")
+
+		local lines = open_directory_preview_with_state({
+			win = 1,
+			buf = 1,
+			pending_ops = {
+				{ type = "create", path = "/tmp/project/new.md", entry_type = "file" },
+			},
+		})
+
+		assert.are.same({ " src", "F new.md" }, lines)
+	end)
+
+	it("hides pending deleted entries in directory preview", function()
+		add_entry("/tmp/project", "old.md", "file")
+
+		local lines = open_directory_preview_with_state({
+			win = 1,
+			buf = 1,
+			pending_ops = {
+				{ type = "delete", path = "/tmp/project/old.md", entry_type = "file" },
+			},
+		})
+
+		assert.are.same({ "" }, lines)
+	end)
+
+	it("refreshes directory preview for the same target when pending entries change", function()
+		local state = {
+			win = 1,
+			buf = 1,
+			pending_ops = {},
+		}
+		local preview = require("etoile.preview")
+		require("etoile.config").setup()
+		preview.open(state, "/tmp/project", "directory")
+		state.pending_ops = {
+			{ type = "create", path = "/tmp/project/new.md", entry_type = "file" },
+		}
+
+		preview.sync(state, "/tmp/project", "directory")
+
+		assert.are.same({ "F new.md" }, buffers[state.preview_buf].lines)
 	end)
 
 	it("resizes the preview when syncing the same target", function()
