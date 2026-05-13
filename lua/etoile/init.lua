@@ -150,6 +150,76 @@ end
 
 local collect_pending_edits
 
+local function current_buffer_index(root, lines)
+	local by_id = {}
+	local by_path = {}
+	for index, item in ipairs(lines) do
+		local current_path = editor.path_at_line(root, lines, index)
+		if current_path then
+			by_path[path.normalize(current_path)] = true
+			if item.id then
+				by_id[item.id] = path.normalize(current_path)
+			end
+		end
+	end
+	return by_id, by_path
+end
+
+local function original_ids_by_path(state)
+	local result = {}
+	for id, source_path in pairs(state.paths_by_id or {}) do
+		result[path.normalize(source_path)] = id
+	end
+	return result
+end
+
+local function path_is_visible_scope(root, current_paths, target)
+	local parent = path.dirname(target)
+	return path.normalize(parent) == path.normalize(root) or current_paths[path.normalize(parent)] == true
+end
+
+local function drop_stale_pending_ops(state, lines)
+	if not state.pending_ops or #state.pending_ops == 0 then
+		return
+	end
+
+	local current_by_id, current_paths = current_buffer_index(state.root, lines)
+	local ids_by_path = original_ids_by_path(state)
+	local kept = {}
+
+	for _, op in ipairs(state.pending_ops) do
+		local keep = true
+		if op.type == "delete" then
+			local id = ids_by_path[path.normalize(op.path)]
+			if id and current_by_id[id] then
+				keep = false
+			end
+		elseif op.type == "move" then
+			local id = ids_by_path[path.normalize(op.from)]
+			local current_path = id and current_by_id[id] or nil
+			if current_path and current_path ~= path.normalize(op.to) then
+				keep = false
+			end
+		elseif op.type == "create" then
+			local target = path.normalize(op.path)
+			if path_is_visible_scope(state.root, current_paths, target) and not current_paths[target] then
+				keep = false
+			end
+		elseif op.type == "copy" then
+			local target = path.normalize(op.to)
+			if path_is_visible_scope(state.root, current_paths, target) and not current_paths[target] then
+				keep = false
+			end
+		end
+
+		if keep then
+			table.insert(kept, op)
+		end
+	end
+
+	state.pending_ops = pending.normalize(kept)
+end
+
 local function refresh(state, opts)
 	opts = opts or {}
 	if opts.collect_pending ~= false and collect_pending_edits then
@@ -214,6 +284,7 @@ collect_pending_edits = function(state)
 		return {}
 	end
 	local lines = renderer.lines_with_ids(state.buf)
+	drop_stale_pending_ops(state, lines)
 	local ops = editor.diff(state.root, state.snapshot, lines, {
 		paths_by_id = state.paths_by_id,
 		types_by_id = state.types_by_id,

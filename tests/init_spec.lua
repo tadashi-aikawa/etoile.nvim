@@ -227,7 +227,7 @@ local function reset_vim()
 		end,
 		path_at_line = function(root, lines, line)
 			local raw = lines[line] and lines[line].line
-			local name = raw and raw:match("%S+")
+			local name = raw and raw:gsub("^%s*%d%d%d%d%d%d%s+", ""):match("%S+")
 			return name and (root .. "/" .. name) or nil
 		end,
 		expanded_paths = function()
@@ -829,6 +829,82 @@ describe("etoile", function()
 			{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
 		}, last_apply_ops)
 		assert.are.same({ "" }, buffer_lines)
+	end)
+
+	it("drops a canceled pending delete after the deleted line is restored", function()
+		rendered_entries = {
+			{ id = "/tmp/project/remove.md", path = "/tmp/project/remove.md", name = "remove.md", type = "file" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "delete", path = "/tmp/project/remove.md", entry_type = "file" },
+			}
+		end
+		apply_result = { false, "Apply canceled" }
+		open_etoile()
+		buffer_lines = { "" }
+
+		autocmds.BufWriteCmd.callback()
+
+		editor_diff = function()
+			return {}
+		end
+		apply_result = { true, nil }
+		buffer_lines = { "000001 remove.md" }
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({}, last_apply_ops)
+	end)
+
+	it("drops a canceled pending create after the created line is removed", function()
+		rendered_entries = {}
+		editor_diff = function()
+			return {
+				{ type = "create", path = "/tmp/project/new.md", entry_type = "file" },
+			}
+		end
+		apply_result = { false, "Apply canceled" }
+		open_etoile()
+		buffer_lines = { "new.md" }
+
+		autocmds.BufWriteCmd.callback()
+
+		editor_diff = function()
+			return {}
+		end
+		apply_result = { true, nil }
+		buffer_lines = { "" }
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({}, last_apply_ops)
+	end)
+
+	it("drops a canceled pending move after the moved line is restored", function()
+		rendered_entries = {
+			{ id = "/tmp/project/old.md", path = "/tmp/project/old.md", name = "old.md", type = "file" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "move", from = "/tmp/project/old.md", to = "/tmp/project/new.md", entry_type = "file" },
+			}
+		end
+		apply_result = { false, "Apply canceled" }
+		open_etoile()
+		buffer_lines = { "000001 new.md" }
+
+		autocmds.BufWriteCmd.callback()
+
+		editor_diff = function()
+			return {}
+		end
+		apply_result = { true, nil }
+		buffer_lines = { "000001 old.md" }
+
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({}, last_apply_ops)
 	end)
 
 	it("drops forward root history after branching to another child root", function()
