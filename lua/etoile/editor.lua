@@ -389,6 +389,85 @@ local function copy_directory(from, to)
 	return true
 end
 
+local function path_covers(parent, child)
+	return parent == child or path.is_ancestor(parent, child)
+end
+
+local function add_dependency(edges, indegree, before, after)
+	if before == after or edges[before][after] then
+		return
+	end
+	edges[before][after] = true
+	indegree[after] = indegree[after] + 1
+end
+
+local apply_priority = {
+	delete = 1,
+	move = 2,
+	copy = 3,
+	create = 4,
+}
+
+local function sort_apply_ops(ops)
+	local edges = {}
+	local indegree = {}
+	for index in ipairs(ops) do
+		edges[index] = {}
+		indegree[index] = 0
+	end
+
+	for delete_index, delete_op in ipairs(ops) do
+		if delete_op.type == "delete" then
+			for target_index, target_op in ipairs(ops) do
+				if target_op.type == "move" or target_op.type == "copy" then
+					if target_op.from and path_covers(delete_op.path, target_op.from) then
+						add_dependency(edges, indegree, target_index, delete_index)
+					elseif target_op.to and path_covers(delete_op.path, target_op.to) then
+						add_dependency(edges, indegree, delete_index, target_index)
+					end
+				elseif
+					target_op.type == "create"
+					and target_op.path
+					and path_covers(delete_op.path, target_op.path)
+				then
+					add_dependency(edges, indegree, delete_index, target_index)
+				end
+			end
+		end
+	end
+
+	local pending = {}
+	for index, op in ipairs(ops) do
+		table.insert(pending, {
+			index = index,
+			priority = apply_priority[op.type] or 99,
+		})
+	end
+
+	local sorted = {}
+	while #pending > 0 do
+		table.sort(pending, function(left, right)
+			local left_ready = indegree[left.index] == 0
+			local right_ready = indegree[right.index] == 0
+			if left_ready ~= right_ready then
+				return left_ready
+			end
+			if left.priority ~= right.priority then
+				return left.priority < right.priority
+			end
+			return left.index < right.index
+		end)
+
+		local item = table.remove(pending, 1)
+		table.insert(sorted, ops[item.index])
+		for to in pairs(edges[item.index]) do
+			indegree[to] = indegree[to] - 1
+		end
+	end
+
+	return sorted
+end
+
 local function display_width(line)
 	if vim and vim.fn and vim.fn.strdisplaywidth then
 		return vim.fn.strdisplaywidth(line)
@@ -660,25 +739,17 @@ function M.apply(ops, opts)
 		end
 	end
 
-	for _, op in ipairs(ops) do
+	for _, op in ipairs(sort_apply_ops(ops)) do
 		if op.type == "delete" then
 			local flag = op.entry_type == "directory" and "rf" or ""
 			vim.fn.delete(op.path, flag)
-		end
-	end
-
-	for _, op in ipairs(ops) do
-		if op.type == "move" then
+		elseif op.type == "move" then
 			vim.fn.mkdir(path.dirname(op.to), "p")
 			local result = vim.fn.rename(op.from, op.to)
 			if result ~= 0 then
 				return false, "Failed to move: " .. op.from .. " -> " .. op.to
 			end
-		end
-	end
-
-	for _, op in ipairs(ops) do
-		if op.type == "copy" then
+		elseif op.type == "copy" then
 			local ok, err
 			if op.entry_type == "directory" then
 				ok, err = copy_directory(op.from, op.to)
@@ -688,11 +759,7 @@ function M.apply(ops, opts)
 			if not ok then
 				return false, err or ("Failed to copy: " .. op.from .. " -> " .. op.to)
 			end
-		end
-	end
-
-	for _, op in ipairs(ops) do
-		if op.type == "create" then
+		elseif op.type == "create" then
 			if op.entry_type == "directory" then
 				vim.fn.mkdir(op.path, "p")
 			else

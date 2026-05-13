@@ -253,6 +253,68 @@ describe("etoile.editor", function()
 		}, confirmed_lines)
 	end)
 
+	it("moves entries out of a directory before deleting the directory", function()
+		local original_fn = vim.fn
+		local calls = {}
+		vim.fn = {
+			delete = function(target, flag)
+				table.insert(calls, { "delete", target, flag })
+			end,
+			mkdir = function(target, flag)
+				table.insert(calls, { "mkdir", target, flag })
+			end,
+			rename = function(from, to)
+				table.insert(calls, { "rename", from, to })
+				return 0
+			end,
+		}
+
+		local ok, err = editor.apply({
+			{ type = "move", from = "/tmp/project/testdir/file2", to = "/tmp/project/file2", entry_type = "file" },
+			{ type = "delete", path = "/tmp/project/testdir", entry_type = "directory" },
+		})
+		vim.fn = original_fn
+
+		assert.is_true(ok)
+		assert.is_nil(err)
+		assert.are.same({
+			{ "mkdir", "/tmp/project", "p" },
+			{ "rename", "/tmp/project/testdir/file2", "/tmp/project/file2" },
+			{ "delete", "/tmp/project/testdir", "rf" },
+		}, calls)
+	end)
+
+	it("deletes an existing destination before moving an entry there", function()
+		local original_fn = vim.fn
+		local calls = {}
+		vim.fn = {
+			delete = function(target, flag)
+				table.insert(calls, { "delete", target, flag })
+			end,
+			mkdir = function(target, flag)
+				table.insert(calls, { "mkdir", target, flag })
+			end,
+			rename = function(from, to)
+				table.insert(calls, { "rename", from, to })
+				return 0
+			end,
+		}
+
+		local ok, err = editor.apply({
+			{ type = "move", from = "/tmp/project/new.md", to = "/tmp/project/old.md", entry_type = "file" },
+			{ type = "delete", path = "/tmp/project/old.md", entry_type = "file" },
+		})
+		vim.fn = original_fn
+
+		assert.is_true(ok)
+		assert.is_nil(err)
+		assert.are.same({
+			{ "delete", "/tmp/project/old.md", "" },
+			{ "mkdir", "/tmp/project", "p" },
+			{ "rename", "/tmp/project/new.md", "/tmp/project/old.md" },
+		}, calls)
+	end)
+
 	it("combines confirmed operation types into a single confirmation", function()
 		local calls = 0
 		local confirmed_lines
