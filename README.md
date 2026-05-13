@@ -145,6 +145,8 @@ The preview float opens by default for the entry under the cursor. File previews
 
 If [snacks.nvim](https://github.com/folke/snacks.nvim) is installed and `snacks.image` supports the target file, etoile uses it for image previews.
 
+If [lualine.nvim](https://github.com/nvim-lualine/lualine.nvim) is available, etoile refreshes lualine for the preview window after the preview receives focus. Opening or syncing previews from the tree window does not trigger this refresh.
+
 Saving a file from the preview buffer refreshes the main tree's Git status display by default.
 
 ### Search

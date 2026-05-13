@@ -37,6 +37,23 @@ local function valid_win(win)
 	return win and vim.api.nvim_win_is_valid(win)
 end
 
+local function refresh_lualine_for_current_preview(state)
+	if not valid_win(state.preview_win) or vim.api.nvim_get_current_win() ~= state.preview_win then
+		return
+	end
+
+	local ok, lualine = pcall(require, "lualine")
+	if not ok or type(lualine.refresh) ~= "function" then
+		return
+	end
+
+	lualine.refresh({
+		scope = "window",
+		place = { "statusline", "winbar" },
+		force = true,
+	})
+end
+
 local function snacks_image()
 	local ok, image = pcall(require, "snacks.image")
 	if ok and image.config.enabled ~= false then
@@ -284,6 +301,7 @@ local function setup_preview_window_key_sync(state)
 		group = state.preview_key_sync_group,
 		callback = function()
 			sync_preview_keys_for_current_window(state)
+			refresh_lualine_for_current_preview(state)
 		end,
 	})
 end
@@ -476,6 +494,7 @@ function M.focus_preview(state)
 	end
 
 	vim.api.nvim_set_current_win(state.preview_win)
+	refresh_lualine_for_current_preview(state)
 end
 
 function M.focus_tree(state)

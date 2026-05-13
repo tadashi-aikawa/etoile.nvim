@@ -11,6 +11,7 @@ local deleted_keymaps
 local created_autocmds
 local cleared_autocmds
 local current_win
+local lualine_refreshes
 local win_bufs
 
 local function deepcopy(value)
@@ -44,6 +45,7 @@ local function reset_vim()
 	created_autocmds = {}
 	cleared_autocmds = {}
 	current_win = 1
+	lualine_refreshes = {}
 	win_bufs = {
 		[1] = 1,
 	}
@@ -255,6 +257,11 @@ local function reset_vim()
 	package.loaded["etoile.scanner"] = nil
 	package.loaded["etoile.path"] = nil
 	package.loaded["etoile.config"] = nil
+	package.loaded["lualine"] = {
+		refresh = function(opts)
+			table.insert(lualine_refreshes, deepcopy(opts))
+		end,
+	}
 	package.loaded["nvim-web-devicons"] = {
 		get_icon = function()
 			return "F", "FileIcon"
@@ -392,6 +399,54 @@ describe("etoile.preview", function()
 		assert.are.equal("<C-i>", set_keymaps[#set_keymaps].lhs)
 		assert.are.equal(42, set_keymaps[#set_keymaps - 4].opts.buffer)
 		assert.are.equal("<C-w>w", set_keymaps[#set_keymaps - 4].lhs)
+	end)
+
+	it("refreshes lualine when focusing the preview window", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/new.lua", "file")
+
+		assert.are.same({}, lualine_refreshes)
+
+		preview.focus_preview(state)
+
+		assert.are.same({
+			{
+				scope = "window",
+				place = { "statusline", "winbar" },
+				force = true,
+			},
+		}, lualine_refreshes)
+	end)
+
+	it("refreshes lualine on preview BufEnter only when the preview window is current", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/new.lua", "file")
+
+		for _, autocmd in ipairs(created_autocmds) do
+			if vim.deepcopy(autocmd.event)[1] == "BufEnter" then
+				current_win = 99
+				autocmd.opts.callback()
+				current_win = state.preview_win
+				autocmd.opts.callback()
+				break
+			end
+		end
+
+		assert.are.same({
+			{
+				scope = "window",
+				place = { "statusline", "winbar" },
+				force = true,
+			},
+		}, lualine_refreshes)
 	end)
 
 	it("shows preview keymap help by default", function()
