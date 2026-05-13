@@ -651,7 +651,7 @@ function M.apply(ops, opts)
 
 	local confirm_count = #confirmable.delete + #confirmable.move + #confirmable.copy + #confirmable.create
 	if confirm_count > 0 then
-		local action = confirm_operations(confirmable, opts)
+		local action = confirm_operations(by_type, opts)
 		if action == false or action == nil or action == "cancel" then
 			return false, "Apply canceled"
 		end

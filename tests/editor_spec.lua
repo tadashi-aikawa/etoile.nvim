@@ -297,6 +297,42 @@ describe("etoile.editor", function()
 		}, confirmed_lines)
 	end)
 
+	it("shows all pending operations when any operation needs confirmation", function()
+		local calls = 0
+		local confirmed_lines
+
+		local ok, err = editor.apply({
+			{ type = "create", path = "/tmp/project/new.lua", entry_type = "file" },
+			{ type = "create", path = "/tmp/project/src", entry_type = "directory" },
+			{ type = "delete", path = "/tmp/project/remove.lua", entry_type = "file" },
+		}, {
+			confirm_delete = true,
+			confirm_create = false,
+			root = "/tmp/project",
+			confirm_fn = function(lines)
+				calls = calls + 1
+				confirmed_lines = lines
+				return false
+			end,
+		})
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same(1, calls)
+		assert.are.same({
+			"Apply 3 change(s)?",
+			"",
+			"Delete (1)",
+			"- remove.lua",
+			"",
+			"Create (2)",
+			"- new.lua",
+			"- src/",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+	end)
+
 	it("returns a reverted result when the confirmation asks to revert", function()
 		local ok, err = editor.apply({
 			{ type = "move", from = "/tmp/project/old.lua", to = "/tmp/project/new.lua", entry_type = "file" },

@@ -135,7 +135,8 @@ Saving the etoile buffer applies the difference between the original tree and th
 
 When `confirm.delete = true`, deletes open a confirmation window before files are removed. When
 `confirm.move = true`, moves and renames open a confirmation window showing the before and after paths.
-If multiple confirmed operations are pending, they are shown together in a single confirmation window.
+If any operation needs confirmation, the confirmation window shows all pending operations that will be
+applied by the save, including operations whose own confirmation option is disabled.
 Canceling the confirmation keeps the edited tree buffer unchanged. Press `r` in the confirmation
 window to revert pending edits.
 
@@ -321,7 +322,7 @@ Set `git_status.sync_on_preview_write = false` to stop refreshing the main tree'
 
 `confirm.copy = false` and `confirm.create = false` keep copies and creates immediate by default. Set them to `true` to ask before applying those operations.
 
-All enabled confirmations are grouped into one confirmation window when saving. Cancel only closes the confirmation and keeps the edited tree buffer as-is. Revert redraws the tree from the current file system state and discards pending tree edits.
+When any operation needs confirmation, the confirmation window shows all pending operations that will be applied by the save, including operations whose own confirmation option is disabled. Cancel only closes the confirmation and keeps the edited tree buffer as-is. Revert redraws the tree from the current file system state and discards pending tree edits.
 
 ### icons
 
