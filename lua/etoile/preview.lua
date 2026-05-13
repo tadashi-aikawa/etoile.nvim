@@ -246,6 +246,9 @@ local function jump_avoiding_main(state, lhs)
 end
 
 local function map_preview_keys(state, buf)
+	if buf == state.buf and state.preview_buf ~= buf then
+		return
+	end
 	if state.preview_mapped_buf ~= buf then
 		unmap_preview_keys(state)
 	end
@@ -281,6 +284,9 @@ local function sync_preview_keys_for_current_window(state)
 	end
 
 	local buf = vim.api.nvim_win_get_buf(state.preview_win)
+	if buf == state.buf and state.preview_buf ~= buf then
+		return
+	end
 	map_preview_keys(state, buf)
 end
 

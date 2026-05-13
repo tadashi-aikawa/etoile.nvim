@@ -401,6 +401,30 @@ describe("etoile.preview", function()
 		assert.are.equal("<C-w>w", set_keymaps[#set_keymaps - 4].lhs)
 	end)
 
+	it("does not map preview controls onto the tree buffer", function()
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 99 }
+
+		preview.open(state, "/tmp/project/new.lua", "file")
+		local mapped_count = #set_keymaps
+		local deleted_count = #deleted_keymaps
+		state.preview_win = 1
+		current_win = state.preview_win
+		win_bufs[state.preview_win] = state.buf
+
+		for _, autocmd in ipairs(created_autocmds) do
+			if vim.deepcopy(autocmd.event)[1] == "BufEnter" then
+				autocmd.opts.callback()
+				break
+			end
+		end
+
+		assert.are.equal(mapped_count, #set_keymaps)
+		assert.are.equal(deleted_count, #deleted_keymaps)
+	end)
+
 	it("refreshes lualine when focusing the preview window", function()
 		local config = require("etoile.config")
 		config.setup()
