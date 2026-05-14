@@ -375,6 +375,16 @@ describe("etoile", function()
 		assert.is_nil(keymaps["<C-i>"])
 	end)
 
+	it("returns focus to the source window when closed", function()
+		open_etoile()
+		current_win = 20
+
+		keymaps.q.rhs()
+
+		assert.is_true(closed_wins[20])
+		assert.are.equal(10, current_win)
+	end)
+
 	it("shows tree keymap help by default", function()
 		open_etoile()
 

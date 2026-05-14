@@ -459,6 +459,17 @@ local function update_search_state(state)
 	}
 end
 
+local function close_etoile(state)
+	local source = state.source_win
+	if valid_win(state.win) then
+		vim.api.nvim_win_close(state.win, true)
+	end
+	preview.close(state)
+	if valid_win(source) then
+		vim.api.nvim_set_current_win(source)
+	end
+end
+
 local function open_entry(state, command)
 	local entry = entry_at_cursor(state)
 	if not entry then
@@ -472,14 +483,7 @@ local function open_entry(state, command)
 		return
 	end
 
-	local source = state.source_win
-	if valid_win(state.win) then
-		vim.api.nvim_win_close(state.win, true)
-	end
-	preview.close(state)
-	if valid_win(source) then
-		vim.api.nvim_set_current_win(source)
-	end
+	close_etoile(state)
 	vim.cmd((command or "edit") .. " " .. vim.fn.fnameescape(entry.path))
 end
 
@@ -803,10 +807,7 @@ local function setup_buffer(state)
 		help.open("tree")
 	end, "Show etoile keymaps")
 	map(state.buf, keys.close, function()
-		preview.close(state)
-		if valid_win(state.win) then
-			vim.api.nvim_win_close(state.win, true)
-		end
+		close_etoile(state)
 	end, "Close etoile")
 	map(state.buf, keys.toggle_exclude, function()
 		toggle_exclude_visibility(state)
