@@ -793,6 +793,59 @@ describe("etoile", function()
 		}, last_apply_ops)
 	end)
 
+	it("keeps a pending delete when the deleted entry is pasted after moving to the parent root", function()
+		rendered_entries_by_root = {
+			["/tmp/project"] = {
+				{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			},
+			["/tmp/project/dir"] = {
+				{
+					id = "/tmp/project/dir/remove.md",
+					path = "/tmp/project/dir/remove.md",
+					name = "remove.md",
+					type = "file",
+				},
+			},
+		}
+		local pasted = false
+		editor_diff = function(root)
+			if root == "/tmp/project/dir" then
+				return {
+					{ type = "delete", path = "/tmp/project/dir/remove.md", entry_type = "file" },
+				}
+			end
+			if root == "/tmp/project" and pasted then
+				return {
+					{
+						type = "copy",
+						from = "/tmp/project/dir/remove.md",
+						to = "/tmp/project/remove.md",
+						entry_type = "file",
+					},
+				}
+			end
+			return {}
+		end
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+		keymaps["<C-]>"].rhs()
+		buffer_lines = { "" }
+
+		keymaps["-"].rhs()
+		buffer_lines = { "000002 remove.md", "000001 dir" }
+		pasted = true
+		autocmds.BufWriteCmd.callback()
+
+		assert.are.same({
+			{
+				type = "move",
+				from = "/tmp/project/dir/remove.md",
+				to = "/tmp/project/remove.md",
+				entry_type = "file",
+			},
+		}, last_apply_ops)
+	end)
+
 	it("clears accumulated pending edits when save confirmation reverts", function()
 		rendered_entries_by_root = {
 			["/tmp/project"] = {

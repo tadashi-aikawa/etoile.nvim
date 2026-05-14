@@ -191,7 +191,7 @@ local function drop_stale_pending_ops(state, lines)
 		local keep = true
 		if op.type == "delete" then
 			local id = ids_by_path[path.normalize(op.path)]
-			if id and current_by_id[id] then
+			if id and current_by_id[id] == path.normalize(op.path) then
 				keep = false
 			end
 		elseif op.type == "move" then
