@@ -268,6 +268,31 @@ function M.path_at_line(root, lines, line)
 	return nil
 end
 
+local function path_after_parent_move(parent, child)
+	if not path.is_ancestor(parent.from, child) then
+		return nil
+	end
+	return path.join(parent.to, child:sub(#parent.from + 2))
+end
+
+local function apply_move_prefix(value, move)
+	if value == move.from then
+		return move.to
+	end
+	if path.is_ancestor(move.from, value) then
+		return path.join(move.to, value:sub(#move.from + 2))
+	end
+	return value
+end
+
+local function resolve_moved_path(value, applied_moves)
+	local result = value
+	for _, move in ipairs(applied_moves) do
+		result = apply_move_prefix(result, move)
+	end
+	return result
+end
+
 function M.filter_redundant_ops(ops)
 	local moves = {}
 	local copies = {}
@@ -300,7 +325,8 @@ function M.filter_redundant_ops(ops)
 		local redundant = false
 		if op.type == "move" then
 			for _, parent in ipairs(moves) do
-				if parent ~= op and path.is_ancestor(parent.from, op.from) then
+				local moved_path = parent ~= op and path_after_parent_move(parent, op.from) or nil
+				if moved_path and path.normalize(moved_path) == path.normalize(op.to) then
 					redundant = true
 					break
 				end
@@ -764,25 +790,29 @@ function M.apply(ops, opts)
 		end
 	end
 
+	local applied_moves = {}
 	for _, op in ipairs(sort_apply_ops(ops)) do
 		if op.type == "delete" then
 			local flag = op.entry_type == "directory" and "rf" or ""
 			vim.fn.delete(op.path, flag)
 		elseif op.type == "move" then
+			local from = resolve_moved_path(op.from, applied_moves)
 			vim.fn.mkdir(path.dirname(op.to), "p")
-			local result = vim.fn.rename(op.from, op.to)
+			local result = vim.fn.rename(from, op.to)
 			if result ~= 0 then
-				return false, "Failed to move: " .. op.from .. " -> " .. op.to
+				return false, "Failed to move: " .. from .. " -> " .. op.to
 			end
+			table.insert(applied_moves, { from = from, to = op.to })
 		elseif op.type == "copy" then
 			local ok, err
+			local from = resolve_moved_path(op.from, applied_moves)
 			if op.entry_type == "directory" then
-				ok, err = copy_directory(op.from, op.to)
+				ok, err = copy_directory(from, op.to)
 			else
-				ok, err = copy_file(op.from, op.to)
+				ok, err = copy_file(from, op.to)
 			end
 			if not ok then
-				return false, err or ("Failed to copy: " .. op.from .. " -> " .. op.to)
+				return false, err or ("Failed to copy: " .. from .. " -> " .. op.to)
 			end
 		elseif op.type == "create" then
 			if op.entry_type == "directory" then

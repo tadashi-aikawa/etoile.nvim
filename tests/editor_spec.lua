@@ -185,6 +185,73 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("keeps a child rename when its parent directory is renamed", function()
+		local entries = {
+			{ id = "000001", path = "/tmp/project/aaa", name = "aaa", type = "directory" },
+			{ id = "000013", path = "/tmp/project/aaa/bbb", name = "bbb", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "000001 aa" },
+			{ line = "  000013 bb" },
+		})
+
+		assert.are.same({
+			{ type = "move", from = "/tmp/project/aaa", to = "/tmp/project/aa", entry_type = "directory" },
+			{ type = "move", from = "/tmp/project/aaa/bbb", to = "/tmp/project/aa/bb", entry_type = "file" },
+		}, ops)
+	end)
+
+	it("drops an unchanged child move when its parent directory is renamed", function()
+		local entries = {
+			{ id = "000001", path = "/tmp/project/aaa", name = "aaa", type = "directory" },
+			{ id = "000013", path = "/tmp/project/aaa/bbb", name = "bbb", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "000001 aa" },
+			{ line = "  000013 bbb" },
+		})
+
+		assert.are.same({
+			{ type = "move", from = "/tmp/project/aaa", to = "/tmp/project/aa", entry_type = "directory" },
+		}, ops)
+	end)
+
+	it("keeps a child create when its parent directory is renamed", function()
+		local entries = {
+			{ id = "000001", path = "/tmp/project/aaa", name = "aaa", type = "directory" },
+			{ id = "000013", path = "/tmp/project/aaa/bbb", name = "bbb", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "000001 aa" },
+			{ line = "  000013 bbb" },
+			{ line = "  new.md" },
+		})
+
+		assert.are.same({
+			{ type = "move", from = "/tmp/project/aaa", to = "/tmp/project/aa", entry_type = "directory" },
+			{ type = "create", path = "/tmp/project/aa/new.md", entry_type = "file" },
+		}, ops)
+	end)
+
+	it("keeps a child delete when its parent directory is renamed", function()
+		local entries = {
+			{ id = "000001", path = "/tmp/project/aaa", name = "aaa", type = "directory" },
+			{ id = "000013", path = "/tmp/project/aaa/bbb", name = "bbb", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "000001 aa" },
+		})
+
+		assert.are.same({
+			{ type = "move", from = "/tmp/project/aaa", to = "/tmp/project/aa", entry_type = "directory" },
+			{ type = "delete", path = "/tmp/project/aaa/bbb", entry_type = "file" },
+		}, ops)
+	end)
+
 	it("deletes missing entries", function()
 		local entries = {
 			{ path = "/tmp/project/remove.lua", name = "remove.lua", type = "file" },
@@ -312,6 +379,38 @@ describe("etoile.editor", function()
 			{ "delete", "/tmp/project/old.md", "" },
 			{ "mkdir", "/tmp/project", "p" },
 			{ "rename", "/tmp/project/new.md", "/tmp/project/old.md" },
+		}, calls)
+	end)
+
+	it("moves a renamed child directory from its path after the parent directory move", function()
+		local original_fn = vim.fn
+		local calls = {}
+		vim.fn = {
+			delete = function(target, flag)
+				table.insert(calls, { "delete", target, flag })
+			end,
+			mkdir = function(target, flag)
+				table.insert(calls, { "mkdir", target, flag })
+			end,
+			rename = function(from, to)
+				table.insert(calls, { "rename", from, to })
+				return 0
+			end,
+		}
+
+		local ok, err = editor.apply({
+			{ type = "move", from = "/tmp/project/aaa", to = "/tmp/project/aa", entry_type = "directory" },
+			{ type = "move", from = "/tmp/project/aaa/bbb", to = "/tmp/project/aa/bb", entry_type = "directory" },
+		})
+		vim.fn = original_fn
+
+		assert.is_true(ok)
+		assert.is_nil(err)
+		assert.are.same({
+			{ "mkdir", "/tmp/project", "p" },
+			{ "rename", "/tmp/project/aaa", "/tmp/project/aa" },
+			{ "mkdir", "/tmp/project/aa", "p" },
+			{ "rename", "/tmp/project/aa/bbb", "/tmp/project/aa/bb" },
 		}, calls)
 	end)
 
