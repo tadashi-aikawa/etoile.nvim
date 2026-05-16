@@ -654,6 +654,29 @@ local function confirm_config(lines, severity)
 	}
 end
 
+local function adjust_confirm_height(win, config, line_count)
+	if not (vim.api and vim.api.nvim_win_text_height and vim.api.nvim_win_set_config) then
+		return
+	end
+
+	local ok, text_height = pcall(vim.api.nvim_win_text_height, win, {
+		start_row = 0,
+		end_row = line_count - 1,
+	})
+	if not ok or not text_height or not text_height.all then
+		return
+	end
+
+	local height = math.min(text_height.all, math.max(1, vim.o.lines - 4))
+	if height == config.height then
+		return
+	end
+
+	config.height = height
+	config.row = math.max(0, math.floor((vim.o.lines - height) / 2) - 1)
+	vim.api.nvim_win_set_config(win, config)
+end
+
 local function confirm_operations(by_type, opts)
 	local severity = confirm_severity(by_type)
 	local lines = confirm_lines(by_type, opts.root)
@@ -669,9 +692,11 @@ local function confirm_operations(by_type, opts)
 	vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
 	vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
 
-	local win = vim.api.nvim_open_win(buf, true, confirm_config(lines, severity))
-	vim.api.nvim_set_option_value("wrap", false, { win = win })
+	local win_config = confirm_config(lines, severity)
+	local win = vim.api.nvim_open_win(buf, true, win_config)
+	vim.api.nvim_set_option_value("wrap", true, { win = win })
 	vim.api.nvim_set_option_value("cursorline", false, { win = win })
+	adjust_confirm_height(win, win_config, #lines)
 	vim.api.nvim_set_option_value(
 		"winhighlight",
 		"NormalFloat:EtoileConfirm,FloatBorder:EtoileConfirmBorder,FloatTitle:EtoileConfirmTitle",
