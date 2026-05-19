@@ -313,11 +313,92 @@ describe("etoile.editor", function()
 			"Apply 2 change(s)?",
 			"",
 			"Move (2)",
-			"- old.lua -> src/new.lua",
-			"- docs/ -> archive/docs/",
+			"- old.lua",
+			"+ src/new.lua",
+			"- docs/",
+			"+ archive/docs/",
 			"",
 			"[y] Apply    [Enter/n] Cancel    [r] Revert",
 		}, confirmed_lines)
+	end)
+
+	it("highlights changed path text in the move confirmation", function()
+		local original_api = vim.api
+		local original_fn = vim.fn
+		local original_o = vim.o
+		local confirmed_lines
+		local highlights = {}
+
+		vim.o = { columns = 120, lines = 40 }
+		vim.fn = {
+			getcharstr = function()
+				return "n"
+			end,
+		}
+		vim.api = {
+			nvim_set_hl = function() end,
+			nvim_create_buf = function()
+				return 1
+			end,
+			nvim_buf_set_lines = function(_, _, _, _, lines)
+				confirmed_lines = lines
+			end,
+			nvim_set_option_value = function() end,
+			nvim_open_win = function()
+				return 10
+			end,
+			nvim_win_is_valid = function()
+				return true
+			end,
+			nvim_win_close = function() end,
+			nvim_buf_add_highlight = function(_, _, hl_group, line, start_col, end_col)
+				table.insert(highlights, {
+					hl_group = hl_group,
+					line = line,
+					start_col = start_col,
+					end_col = end_col,
+				})
+			end,
+		}
+
+		local ok, err = editor.apply({
+			{
+				type = "move",
+				from = "/tmp/project/src/old_name.lua",
+				to = "/tmp/project/src/new_name.lua",
+				entry_type = "file",
+			},
+		}, {
+			confirm_move = true,
+			root = "/tmp/project",
+		})
+
+		vim.api = original_api
+		vim.fn = original_fn
+		vim.o = original_o
+
+		assert.is_false(ok)
+		assert.are.same("Apply canceled", err)
+		assert.are.same({
+			"Apply 1 change(s)?",
+			"",
+			"Move (1)",
+			"- src/old_name.lua",
+			"+ src/new_name.lua",
+			"",
+			"[y] Apply    [Enter/n] Cancel    [r] Revert",
+		}, confirmed_lines)
+		assert.are.same({
+			{ hl_group = "EtoileConfirmDiffDeleteLine", line = 3, start_col = 0, end_col = -1 },
+			{ hl_group = "EtoileConfirmDiffAddLine", line = 4, start_col = 0, end_col = -1 },
+			{ hl_group = "DiffDelete", line = 3, start_col = 6, end_col = 9 },
+			{ hl_group = "DiffAdd", line = 4, start_col = 6, end_col = 9 },
+		}, {
+			highlights[#highlights - 4],
+			highlights[#highlights - 3],
+			highlights[#highlights - 2],
+			highlights[#highlights - 1],
+		})
 	end)
 
 	it("moves entries out of a directory before deleting the directory", function()
@@ -446,7 +527,8 @@ describe("etoile.editor", function()
 			"- remove.lua",
 			"",
 			"Move (1)",
-			"- old.lua -> new.lua",
+			"- old.lua",
+			"+ new.lua",
 			"",
 			"Copy (1)",
 			"- base.md -> docs/base.md",

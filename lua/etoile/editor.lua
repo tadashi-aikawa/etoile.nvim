@@ -549,6 +549,8 @@ local function setup_confirm_highlights(severity)
 	vim.api.nvim_set_hl(0, "EtoileConfirmTitle", palette.title)
 	vim.api.nvim_set_hl(0, "EtoileConfirmPath", palette.path)
 	vim.api.nvim_set_hl(0, "EtoileConfirmButton", palette.button)
+	vim.api.nvim_set_hl(0, "EtoileConfirmDiffDeleteLine", { default = true, link = "Removed" })
+	vim.api.nvim_set_hl(0, "EtoileConfirmDiffAddLine", { default = true, link = "Added" })
 end
 
 local function pluralize(count, singular, plural)
@@ -621,11 +623,31 @@ local function display_path(value, root, entry_type)
 	return result
 end
 
+local function changed_range(left, right)
+	local prefix = 0
+	local left_len = #left
+	local right_len = #right
+	local min_len = math.min(left_len, right_len)
+	while prefix < min_len and left:sub(prefix + 1, prefix + 1) == right:sub(prefix + 1, prefix + 1) do
+		prefix = prefix + 1
+	end
+
+	local suffix = 0
+	while
+		suffix < min_len - prefix
+		and left:sub(left_len - suffix, left_len - suffix) == right:sub(right_len - suffix, right_len - suffix)
+	do
+		suffix = suffix + 1
+	end
+
+	return prefix, left_len - suffix, prefix, right_len - suffix
+end
+
 local function operation_display_path(op, root)
 	if op.type == "delete" then
 		return delete_display_path(op, root)
 	end
-	if op.type == "move" or op.type == "copy" then
+	if op.type == "copy" then
 		return display_path(op.from, root, op.entry_type) .. " -> " .. display_path(op.to, root, op.entry_type)
 	end
 	return display_path(op.path, root, op.entry_type)
@@ -638,6 +660,50 @@ local confirm_labels = {
 	create = "Create",
 }
 
+local function append_move_confirm_lines(lines, highlights, op, root)
+	local from = display_path(op.from, root, op.entry_type)
+	local to = display_path(op.to, root, op.entry_type)
+	local from_prefix = "- "
+	local to_prefix = "+ "
+	local from_line = from_prefix .. from
+	local to_line = to_prefix .. to
+	local from_line_index = #lines
+	local to_line_index = #lines + 1
+	table.insert(lines, from_line)
+	table.insert(lines, to_line)
+
+	table.insert(highlights, {
+		line = from_line_index,
+		start_col = 0,
+		end_col = -1,
+		hl_group = "EtoileConfirmDiffDeleteLine",
+	})
+	table.insert(highlights, {
+		line = to_line_index,
+		start_col = 0,
+		end_col = -1,
+		hl_group = "EtoileConfirmDiffAddLine",
+	})
+
+	local from_start, from_end, to_start, to_end = changed_range(from, to)
+	if from_start < from_end then
+		table.insert(highlights, {
+			line = from_line_index,
+			start_col = #from_prefix + from_start,
+			end_col = #from_prefix + from_end,
+			hl_group = "DiffDelete",
+		})
+	end
+	if to_start < to_end then
+		table.insert(highlights, {
+			line = to_line_index,
+			start_col = #to_prefix + to_start,
+			end_col = #to_prefix + to_end,
+			hl_group = "DiffAdd",
+		})
+	end
+end
+
 local function confirm_lines(by_type, root)
 	local total = 0
 	for _, op_type in ipairs({ "delete", "move", "copy", "create" }) do
@@ -645,18 +711,23 @@ local function confirm_lines(by_type, root)
 	end
 
 	local lines = { "Apply " .. total .. " change(s)?", "" }
+	local highlights = {}
 	for _, op_type in ipairs({ "delete", "move", "copy", "create" }) do
 		local ops = by_type[op_type]
 		if #ops > 0 then
 			table.insert(lines, (confirm_labels[op_type] or op_type) .. " (" .. #ops .. ")")
 			for _, op in ipairs(ops) do
-				table.insert(lines, "- " .. operation_display_path(op, root))
+				if op.type == "move" then
+					append_move_confirm_lines(lines, highlights, op, root)
+				else
+					table.insert(lines, "- " .. operation_display_path(op, root))
+				end
 			end
 			table.insert(lines, "")
 		end
 	end
 	table.insert(lines, "[y] Apply    [Enter/n] Cancel    [r] Revert")
-	return lines
+	return lines, highlights
 end
 
 local function confirm_config(lines, severity)
@@ -705,7 +776,7 @@ end
 
 local function confirm_operations(by_type, opts)
 	local severity = confirm_severity(by_type)
-	local lines = confirm_lines(by_type, opts.root)
+	local lines, diff_highlights = confirm_lines(by_type, opts.root)
 	local confirm_fn = opts.confirm_fn
 	if confirm_fn then
 		return confirm_fn(lines)
@@ -731,6 +802,16 @@ local function confirm_operations(by_type, opts)
 
 	for line = 3, #lines - 2 do
 		vim.api.nvim_buf_add_highlight(buf, 0, "EtoileConfirmPath", line - 1, 0, -1)
+	end
+	for _, highlight in ipairs(diff_highlights) do
+		vim.api.nvim_buf_add_highlight(
+			buf,
+			0,
+			highlight.hl_group,
+			highlight.line,
+			highlight.start_col,
+			highlight.end_col
+		)
 	end
 	vim.api.nvim_buf_add_highlight(buf, 0, "EtoileConfirmButton", #lines - 1, 0, -1)
 
