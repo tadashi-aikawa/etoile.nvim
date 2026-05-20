@@ -347,7 +347,7 @@ local function setup_preview_write_sync(state, buf, buf_is_scratch)
 end
 
 local function set_preview_options(win)
-	vim.wo[win].wrap = false
+	vim.wo[win].wrap = config.options.preview.wrap
 	vim.wo[win].conceallevel = 0
 end
 

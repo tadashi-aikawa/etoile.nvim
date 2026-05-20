@@ -196,6 +196,7 @@ Complete sample including all options and default values:
     min_width = 30,
     max_width = 120,
     width_ratio = 0.8,
+    wrap = true,
     max_height = 50,
     max_height_ratio = 0.8,
     min_height = 10,
@@ -287,6 +288,8 @@ Height is controlled by `height_ratio`, `max_height`, `max_height_ratio`, `min_h
 `preview.enabled = true` opens the preview float as soon as etoile opens. Set it to `false` to start with preview closed.
 
 Preview width is controlled by `preview.width_ratio`, `preview.min_width`, and `preview.max_width`. Preview height uses the same height option semantics as `tree`.
+
+`preview.wrap = true` wraps lines in regular file previews. Directory, image, and empty previews do not wrap.
 
 `preview.debounce_ms = 80` delays cursor-move preview updates so holding `j` or `k` only previews after movement settles. Set it to `0` to update immediately on every cursor move.
 

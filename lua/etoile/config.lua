@@ -32,6 +32,7 @@ local M = {}
 ---@field min_width number Minimum preview window width in columns
 ---@field max_width number Maximum preview window width in columns
 ---@field width_ratio number Preferred preview width as a ratio of available space
+---@field wrap boolean Wrap lines in regular file previews
 ---@field max_height number Maximum preview window height in lines (effective max uses the larger of size and ratio)
 ---@field max_height_ratio number Maximum preview height as a ratio (effective max uses the larger of size and ratio)
 ---@field min_height number Minimum preview window height in lines (effective min uses the smaller of size and ratio)
@@ -129,6 +130,7 @@ local defaults = {
 		min_width = 30,
 		max_width = 120,
 		width_ratio = 0.8,
+		wrap = true,
 		max_height = 50,
 		max_height_ratio = 0.8,
 		min_height = 10,

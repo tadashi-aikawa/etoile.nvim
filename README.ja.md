@@ -190,6 +190,7 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
     min_width = 30,
     max_width = 120,
     width_ratio = 0.8,
+    wrap = true,
     max_height = 50,
     max_height_ratio = 0.8,
     min_height = 10,
@@ -281,6 +282,8 @@ preview buffer のファイルを保存すると、デフォルトでは main tr
 `preview.enabled = true` の場合、etoile を開いた時点で preview float も開く。`false` にすると preview を閉じた状態で開始する。
 
 preview 幅は `preview.width_ratio`, `preview.min_width`, `preview.max_width` で制御する。preview 高さは `tree` と同じ height option の semantics を使う。
+
+`preview.wrap = true` は通常ファイル preview の行を折り返し表示する。ディレクトリ、画像、空 preview は折り返さない。
 
 `preview.debounce_ms = 80` は cursor move による preview 更新を遅延させる。`j` や `k` を押しっぱなしにした場合は、移動が落ち着いてから preview する。`0` にするとカーソル移動ごとに即時更新する。
 

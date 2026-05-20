@@ -635,6 +635,34 @@ describe("etoile.preview", function()
 		assert.are.equal(0, vim.wo[state.preview_win].conceallevel)
 	end)
 
+	it("wraps regular file previews by default", function()
+		stat_by_path["/tmp/project/test.lua"] = { type = "file" }
+		local config = require("etoile.config")
+		config.setup()
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/test.lua", "file")
+
+		assert.is_true(vim.wo[state.preview_win].wrap)
+	end)
+
+	it("can disable wrapping regular file previews", function()
+		stat_by_path["/tmp/project/test.lua"] = { type = "file" }
+		local config = require("etoile.config")
+		config.setup({
+			preview = {
+				wrap = false,
+			},
+		})
+		local preview = require("etoile.preview")
+		local state = { win = 1, buf = 1 }
+
+		preview.open(state, "/tmp/project/test.lua", "file")
+
+		assert.is_false(vim.wo[state.preview_win].wrap)
+	end)
+
 	it("sets conceallevel = 0 for a directory preview", function()
 		add_entry("/tmp/project", "src", "directory")
 		local config = require("etoile.config")
