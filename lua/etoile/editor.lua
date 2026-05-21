@@ -654,9 +654,6 @@ local function operation_display_path(op, root)
 	if op.type == "delete" then
 		return delete_display_path(op, root)
 	end
-	if op.type == "copy" then
-		return display_path(op.from, root, op.entry_type) .. " -> " .. display_path(op.to, root, op.entry_type)
-	end
 	return display_path(op.path, root, op.entry_type)
 end
 
@@ -711,6 +708,13 @@ local function append_move_confirm_lines(lines, highlights, op, root)
 	end
 end
 
+local function append_copy_confirm_lines(lines, op, root)
+	local from = display_path(op.from, root, op.entry_type)
+	local to = display_path(op.to, root, op.entry_type)
+	table.insert(lines, "- " .. from)
+	table.insert(lines, "  -> " .. to)
+end
+
 local function confirm_lines(by_type, root)
 	local total = 0
 	for _, op_type in ipairs({ "delete", "move", "copy", "create" }) do
@@ -726,6 +730,8 @@ local function confirm_lines(by_type, root)
 			for _, op in ipairs(ops) do
 				if op.type == "move" then
 					append_move_confirm_lines(lines, highlights, op, root)
+				elseif op.type == "copy" then
+					append_copy_confirm_lines(lines, op, root)
 				else
 					table.insert(lines, "- " .. operation_display_path(op, root))
 				end
