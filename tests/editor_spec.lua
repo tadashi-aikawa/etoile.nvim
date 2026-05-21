@@ -812,6 +812,19 @@ describe("etoile.editor", function()
 		}, ops)
 	end)
 
+	it("ignores duplicated ids that resolve to the original path", function()
+		local entries = {
+			{ path = "/tmp/project/base.md", name = "base.md", type = "file" },
+		}
+
+		local ops = editor.diff("/tmp/project", snapshot(entries), {
+			{ line = "base.md", id = "/tmp/project/base.md", mark_id = 1 },
+			{ line = "base.md", id = "/tmp/project/base.md", mark_id = 2 },
+		})
+
+		assert.are.same({}, ops)
+	end)
+
 	it("treats repeated puts of the same inline id as copies from the original source", function()
 		local ops = editor.diff(
 			"/tmp/project",

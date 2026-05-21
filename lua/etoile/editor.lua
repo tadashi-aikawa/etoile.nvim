@@ -141,6 +141,18 @@ local function entry_type_for(entry, parsed)
 	return parsed.type
 end
 
+local function append_copy_op(ops, from, to, entry_type)
+	if path.normalize(from) == path.normalize(to) then
+		return
+	end
+	table.insert(ops, {
+		type = "copy",
+		from = from,
+		to = to,
+		entry_type = entry_type,
+	})
+end
+
 function M.diff(root, snapshot, lines, opts)
 	opts = opts or {}
 	snapshot = normalize_snapshot(snapshot or {})
@@ -181,12 +193,7 @@ function M.diff(root, snapshot, lines, opts)
 			elseif exact_destination then
 				for _, destination in ipairs(destinations) do
 					if destination ~= exact_destination then
-						table.insert(ops, {
-							type = "copy",
-							from = entry.path,
-							to = destination.path,
-							entry_type = entry_type_for(entry, destination),
-						})
+						append_copy_op(ops, entry.path, destination.path, entry_type_for(entry, destination))
 					end
 				end
 			else
@@ -197,12 +204,12 @@ function M.diff(root, snapshot, lines, opts)
 					entry_type = entry_type_for(entry, destinations[1]),
 				})
 				for index = 2, #destinations do
-					table.insert(ops, {
-						type = "copy",
-						from = destinations[1].path,
-						to = destinations[index].path,
-						entry_type = entry_type_for(entry, destinations[index]),
-					})
+					append_copy_op(
+						ops,
+						destinations[1].path,
+						destinations[index].path,
+						entry_type_for(entry, destinations[index])
+					)
 				end
 			end
 		end
@@ -222,12 +229,12 @@ function M.diff(root, snapshot, lines, opts)
 		if parsed.id and not snapshot.by_id[parsed.id] then
 			local source_path = opts.paths_by_id and opts.paths_by_id[parsed.id]
 			if source_path then
-				table.insert(ops, {
-					type = "copy",
-					from = source_path,
-					to = parsed.path,
-					entry_type = (opts.types_by_id and opts.types_by_id[parsed.id]) or parsed.type,
-				})
+				append_copy_op(
+					ops,
+					source_path,
+					parsed.path,
+					(opts.types_by_id and opts.types_by_id[parsed.id]) or parsed.type
+				)
 			end
 		elseif not parsed.id then
 			table.insert(ops, {

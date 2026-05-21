@@ -111,6 +111,10 @@ local function append_plain(ops, incoming)
 end
 
 local function append_copy(ops, incoming)
+	if path.normalize(incoming.from) == path.normalize(incoming.to) then
+		return ops
+	end
+
 	for index, op in ipairs(ops) do
 		if op.type == "delete" and op.path == incoming.from then
 			ops[index] = {

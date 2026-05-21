@@ -72,6 +72,14 @@ describe("etoile.pending", function()
 		}, ops)
 	end)
 
+	it("drops copy operations that target the source path", function()
+		local ops = pending.merge({}, {
+			{ type = "copy", from = "/tmp/project/base.md", to = "/tmp/project/base.md", entry_type = "file" },
+		})
+
+		assert.are.same({}, ops)
+	end)
+
 	it("renames a pending create instead of moving a missing source", function()
 		local ops = pending.merge({
 			{ type = "create", path = "/tmp/project/new.md", entry_type = "file" },
