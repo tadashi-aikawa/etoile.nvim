@@ -33,6 +33,7 @@ local function entries_for(scope)
 		{ configured_key("open_split"), "Open etoile entry in horizontal split" },
 		{ configured_key("open_vsplit"), "Open etoile entry in vertical split" },
 		{ configured_key("open_tab"), "Open etoile entry in new tab" },
+		{ configured_key("open_tab_keep"), "Open etoile entry in new tab without closing etoile" },
 		{ configured_key("parent"), "Move etoile root to parent" },
 		{ configured_key("child"), "Move etoile root to child" },
 		{ configured_key("expand_all"), "Expand etoile directory recursively" },

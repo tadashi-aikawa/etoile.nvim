@@ -475,7 +475,8 @@ local function close_etoile(state)
 	end
 end
 
-local function open_entry(state, command)
+local function open_entry(state, command, opts)
+	opts = opts or {}
 	local entry = entry_at_cursor(state)
 	if not entry then
 		return
@@ -490,7 +491,9 @@ local function open_entry(state, command)
 		return
 	end
 
-	close_etoile(state)
+	if opts.close ~= false then
+		close_etoile(state)
+	end
 	vim.cmd((command or "edit") .. " " .. vim.fn.fnameescape(entry.path))
 end
 
@@ -751,6 +754,9 @@ local function schedule_sync_preview(state)
 end
 
 local function map(buf, lhs, rhs, desc)
+	if not lhs or lhs == "" then
+		return
+	end
 	vim.keymap.set("n", lhs, rhs, { buffer = buf, silent = true, desc = desc })
 end
 
@@ -833,6 +839,9 @@ local function setup_buffer(state)
 	map(state.buf, keys.open_tab, function()
 		open_entry(state, "tabedit")
 	end, "Open etoile entry in new tab")
+	map(state.buf, keys.open_tab_keep, function()
+		open_entry(state, "tabedit", { close = false })
+	end, "Open etoile entry in new tab without closing etoile")
 	map(state.buf, keys.parent, function()
 		parent_root(state)
 	end, "Move etoile root to parent")

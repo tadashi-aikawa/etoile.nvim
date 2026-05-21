@@ -214,6 +214,7 @@ Complete sample including all options and default values:
     open_split = "<C-x>",
     open_vsplit = "<C-v>",
     open_tab = "<C-t>",
+    open_tab_keep = "",
     parent = "-",
     child = "<C-]>",
     expand_all = "<leader>o",
@@ -307,7 +308,7 @@ All configurable mappings are buffer-local. `focus_toggle` switches between the 
 
 `help` is mapped in both the tree and preview buffers. The help window opens with the current buffer's tab selected, and the Tree / Preview tabs can be switched with `<Tab>` and `<S-Tab>`.
 
-`open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
+`open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`. `open_tab_keep` opens the selected file with `:tabedit` without closing etoile.
 
 `expand_all` recursively expands the directory under the cursor. `collapse_parent` collapses the parent directory for the entry under the cursor and moves the cursor to that parent directory. On a top-level entry whose parent is the tree root, `collapse_parent` does nothing.
 

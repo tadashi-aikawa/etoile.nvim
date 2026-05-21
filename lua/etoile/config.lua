@@ -46,6 +46,7 @@ local M = {}
 ---@field open_split string Open the selected file in a horizontal split
 ---@field open_vsplit string Open the selected file in a vertical split
 ---@field open_tab string Open the selected file in a new tab
+---@field open_tab_keep string Open the selected file in a new tab without closing etoile
 ---@field parent string Move the tree root to the parent directory
 ---@field child string Move the tree root to the directory under the cursor
 ---@field expand_all string Recursively expand the directory under the cursor
@@ -149,6 +150,7 @@ local defaults = {
 		open_split = "<C-x>",
 		open_vsplit = "<C-v>",
 		open_tab = "<C-t>",
+		open_tab_keep = "",
 		parent = "-",
 		child = "<C-]>",
 		expand_all = "<leader>o",

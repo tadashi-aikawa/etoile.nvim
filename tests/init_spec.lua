@@ -384,6 +384,7 @@ describe("etoile", function()
 		assert.are.equal("Open etoile entry in horizontal split", keymaps["<C-x>"].opts.desc)
 		assert.are.equal("Open etoile entry in vertical split", keymaps["<C-v>"].opts.desc)
 		assert.are.equal("Open etoile entry in new tab", keymaps["<C-t>"].opts.desc)
+		assert.is_nil(keymaps.open_tab_keep)
 	end)
 
 	it("maps root history keys from config", function()
@@ -458,8 +459,10 @@ describe("etoile", function()
 		}, highlights[#highlights])
 		assert.is_truthy(buffer_lines[3]:find("<CR>", 1, true))
 		assert.is_truthy(buffer_lines[3]:find("Open etoile entry", 1, true))
-		assert.is_truthy(buffer_lines[19]:find("q", 1, true))
-		assert.is_truthy(buffer_lines[19]:find("Close etoile", 1, true))
+		assert.is_truthy(buffer_lines[7]:find("<disabled>", 1, true))
+		assert.is_truthy(buffer_lines[7]:find("Open etoile entry in new tab without closing etoile", 1, true))
+		assert.is_truthy(buffer_lines[20]:find("q", 1, true))
+		assert.is_truthy(buffer_lines[20]:find("Close etoile", 1, true))
 
 		keymaps["<Tab>"].rhs()
 
@@ -501,6 +504,27 @@ describe("etoile", function()
 			"vsplit /tmp/project/file.lua",
 			"tabedit /tmp/project/file.lua",
 		}, commands)
+	end)
+
+	it("opens entries in a tab without closing etoile when configured", function()
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+			keymaps = {
+				open_tab_keep = "T",
+			},
+		})
+		etoile.open({
+			path = "/tmp/project",
+		})
+
+		keymaps.T.rhs()
+
+		assert.are.same({ "tabedit /tmp/project/file.lua" }, commands)
+		assert.is_nil(closed_wins[20])
+		assert.are.equal("Open etoile entry in new tab without closing etoile", keymaps.T.opts.desc)
 	end)
 
 	it("moves the cursor to the saved path when the current line is sorted elsewhere", function()
