@@ -106,6 +106,8 @@ require("etoile").open({ path = "/path/to/project" })
 | `<CR>` | Open a file or expand/collapse a directory |
 | `-` | Move the tree root to the parent directory |
 | `<C-]>` | Move the tree root to the directory under the cursor |
+| `<leader>o` | Recursively expand the directory under the cursor |
+| `<leader>c` | Collapse the parent directory for the entry under the cursor |
 | `<C-p>` | Toggle the preview float |
 | `<C-w>w` | Switch focus between the tree window and preview float |
 | `<C-w>l` | Focus the preview float |
@@ -214,6 +216,8 @@ Complete sample including all options and default values:
     open_tab = "<C-t>",
     parent = "-",
     child = "<C-]>",
+    expand_all = "<leader>o",
+    collapse_parent = "<leader>c",
     root_history_back = "<C-o>",
     root_history_forward = "<C-i>",
     preview = "<C-p>",
@@ -304,6 +308,8 @@ All configurable mappings are buffer-local. `focus_toggle` switches between the 
 `help` is mapped in both the tree and preview buffers. The help window opens with the current buffer's tab selected, and the Tree / Preview tabs can be switched with `<Tab>` and `<S-Tab>`.
 
 `open_split`, `open_vsplit`, and `open_tab` open the selected file with `:split`, `:vsplit`, and `:tabedit`.
+
+`expand_all` recursively expands the directory under the cursor. `collapse_parent` collapses the parent directory for the entry under the cursor and moves the cursor to that parent directory. On a top-level entry whose parent is the tree root, `collapse_parent` does nothing.
 
 `root_history_back` and `root_history_forward` move through parent/child root history. Etoile does not use Neovim's normal jumplist inside the tree buffer for these actions.
 

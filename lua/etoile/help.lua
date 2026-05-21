@@ -35,6 +35,8 @@ local function entries_for(scope)
 		{ configured_key("open_tab"), "Open etoile entry in new tab" },
 		{ configured_key("parent"), "Move etoile root to parent" },
 		{ configured_key("child"), "Move etoile root to child" },
+		{ configured_key("expand_all"), "Expand etoile directory recursively" },
+		{ configured_key("collapse_parent"), "Collapse etoile parent directory" },
 		{ configured_key("preview"), "Toggle etoile preview" },
 		{ configured_key("focus_toggle"), "Toggle etoile focus" },
 		{ configured_key("focus_preview"), "Focus etoile preview" },

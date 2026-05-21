@@ -48,6 +48,8 @@ local M = {}
 ---@field open_tab string Open the selected file in a new tab
 ---@field parent string Move the tree root to the parent directory
 ---@field child string Move the tree root to the directory under the cursor
+---@field expand_all string Recursively expand the directory under the cursor
+---@field collapse_parent string Collapse the parent directory for the entry under the cursor
 ---@field root_history_back string Move backward through parent/child root history
 ---@field root_history_forward string Move forward through parent/child root history
 ---@field preview string Toggle the preview float
@@ -149,6 +151,8 @@ local defaults = {
 		open_tab = "<C-t>",
 		parent = "-",
 		child = "<C-]>",
+		expand_all = "<leader>o",
+		collapse_parent = "<leader>c",
 		root_history_back = "<C-o>",
 		root_history_forward = "<C-i>",
 		preview = "<C-p>",

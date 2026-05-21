@@ -99,6 +99,11 @@ local function entry_at_cursor(state)
 	})
 end
 
+local function path_at_cursor(state)
+	local line = vim.api.nvim_win_get_cursor(state.win)[1]
+	return editor.path_at_line(state.root, renderer.lines_with_ids(state.buf), line)
+end
+
 local function set_cursor_to_path(state, target)
 	if not target then
 		return
@@ -477,14 +482,66 @@ local function open_entry(state, command)
 	end
 
 	if entry.type == "directory" then
-		state.expanded[entry.path] = not state.expanded[entry.path]
-		state.focus_path = entry.path
-		refresh(state)
+		local target = path_at_cursor(state) or entry.path
+		collect_pending_edits(state)
+		state.expanded[target] = not state.expanded[target]
+		state.focus_path = target
+		refresh(state, { collect_pending = false })
 		return
 	end
 
 	close_etoile(state)
 	vim.cmd((command or "edit") .. " " .. vim.fn.fnameescape(entry.path))
+end
+
+local function list_dir_for_tree(state, dir)
+	local list_dir = state.pending_ops and #state.pending_ops > 0 and pending.list_dir or scanner.list_dir
+	return list_dir(dir, {
+		root = state.root,
+		exclude = config.options.tree.exclude,
+		include_excluded = state.show_excluded,
+		pending_ops = state.pending_ops,
+	})
+end
+
+local function expand_descendants(state, dir)
+	for _, child in ipairs(list_dir_for_tree(state, dir)) do
+		if child.type == "directory" and not child.symlink then
+			state.expanded[child.path] = true
+			expand_descendants(state, child.path)
+		end
+	end
+end
+
+local function expand_all_under_cursor(state)
+	local entry = entry_at_cursor(state)
+	if not entry or entry.type ~= "directory" then
+		return
+	end
+	local target = path_at_cursor(state) or entry.path
+	collect_pending_edits(state)
+	state.expanded[target] = true
+	expand_descendants(state, target)
+	state.focus_path = target
+	refresh(state, { collect_pending = false })
+	sync_open_preview(state)
+end
+
+local function collapse_parent_at_cursor(state)
+	local entry = entry_at_cursor(state)
+	if not entry then
+		return
+	end
+	local target = path_at_cursor(state) or entry.path
+	local parent = path.dirname(target)
+	if not parent or path.normalize(parent) == path.normalize(state.root) then
+		return
+	end
+	collect_pending_edits(state)
+	state.expanded[parent] = nil
+	state.focus_path = parent
+	refresh(state, { collect_pending = false })
+	sync_open_preview(state)
 end
 
 sync_open_preview = function(state)
@@ -782,6 +839,12 @@ local function setup_buffer(state)
 	map(state.buf, keys.child, function()
 		child_root(state)
 	end, "Move etoile root to child")
+	map(state.buf, keys.expand_all, function()
+		expand_all_under_cursor(state)
+	end, "Expand etoile directory recursively")
+	map(state.buf, keys.collapse_parent, function()
+		collapse_parent_at_cursor(state)
+	end, "Collapse etoile parent directory")
 	map(state.buf, keys.preview, function()
 		toggle_preview(state)
 	end, "Toggle etoile preview")

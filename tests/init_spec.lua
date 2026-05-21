@@ -226,9 +226,31 @@ local function reset_vim()
 			return entries
 		end,
 		path_at_line = function(root, lines, line)
-			local raw = lines[line] and lines[line].line
-			local name = raw and raw:gsub("^%s*%d%d%d%d%d%d%s+", ""):match("%S+")
-			return name and (root .. "/" .. name) or nil
+			local stack = {}
+			local target = nil
+			for index = 1, line do
+				local raw = lines[index] and lines[index].line
+				if raw then
+					local text = raw:gsub("^(%s*)%d%d%d%d%d%d%s+", "%1")
+					local indent = text:match("^%s*") or ""
+					local name = text:match("%S+")
+					if name then
+						local depth = math.floor(#indent / 2)
+						stack[depth] = name
+						for stack_depth = depth + 1, 100 do
+							stack[stack_depth] = nil
+						end
+						if index == line then
+							local parts = { root }
+							for stack_depth = 0, depth do
+								table.insert(parts, stack[stack_depth])
+							end
+							target = table.concat(parts, "/")
+						end
+					end
+				end
+			end
+			return target
 		end,
 		expanded_paths = function()
 			return {}
@@ -279,10 +301,20 @@ local function reset_vim()
 						type = op.entry_type,
 					})
 				end
+				if op.type == "move" then
+					for _, entry in ipairs(entries) do
+						if entry.path == op.from then
+							entry.path = op.to
+							entry.name = op.to:match("([^/]+)$")
+							entry.type = op.entry_type
+							entry.source_path = op.from
+						end
+					end
+				end
 			end
 			if opts and opts.id_for_path then
 				for _, entry in ipairs(entries) do
-					entry.id = opts.id_for_path(entry.path)
+					entry.id = opts.id_for_path(entry.source_path or entry.path)
 				end
 			end
 			local lines = vim.tbl_map(function(entry)
@@ -375,6 +407,27 @@ describe("etoile", function()
 		assert.is_nil(keymaps["<C-i>"])
 	end)
 
+	it("maps recursive expand and parent collapse keys from config", function()
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+			keymaps = {
+				expand_all = "O",
+				collapse_parent = "C",
+			},
+		})
+		etoile.open({
+			path = "/tmp/project",
+		})
+
+		assert.are.equal("Expand etoile directory recursively", keymaps.O.opts.desc)
+		assert.are.equal("Collapse etoile parent directory", keymaps.C.opts.desc)
+		assert.is_nil(keymaps["<leader>o"])
+		assert.is_nil(keymaps["<leader>c"])
+	end)
+
 	it("returns focus to the source window when closed", function()
 		open_etoile()
 		current_win = 20
@@ -405,8 +458,8 @@ describe("etoile", function()
 		}, highlights[#highlights])
 		assert.is_truthy(buffer_lines[3]:find("<CR>", 1, true))
 		assert.is_truthy(buffer_lines[3]:find("Open etoile entry", 1, true))
-		assert.is_truthy(buffer_lines[17]:find("q", 1, true))
-		assert.is_truthy(buffer_lines[17]:find("Close etoile", 1, true))
+		assert.is_truthy(buffer_lines[19]:find("q", 1, true))
+		assert.is_truthy(buffer_lines[19]:find("Close etoile", 1, true))
 
 		keymaps["<Tab>"].rhs()
 
@@ -712,6 +765,106 @@ describe("etoile", function()
 		keymaps["<CR>"].rhs()
 
 		assert.are.same({ "000001 dir" }, buffer_lines)
+	end)
+
+	it("uses the edited directory path when toggling a renamed directory", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+		}
+		editor_diff = function()
+			return {
+				{ type = "move", from = "/tmp/project/dir", to = "/tmp/project/renamed", entry_type = "directory" },
+			}
+		end
+		open_etoile()
+		buffer_lines = { "000001 renamed" }
+		current_entry = { path = "/tmp/project/dir", name = "renamed", type = "directory" }
+
+		keymaps["<CR>"].rhs()
+
+		assert.is_true(last_render_expanded["/tmp/project/renamed"])
+		assert.is_nil(last_render_expanded["/tmp/project/dir"])
+		assert.are.same({ "000001 renamed" }, buffer_lines)
+	end)
+
+	it("expands all descendants under the directory cursor", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+		}
+		package.loaded["etoile.scanner"].list_dir = function(dir)
+			if dir == "/tmp/project/dir" then
+				return {
+					{ path = "/tmp/project/dir/app", name = "app", type = "directory" },
+				}
+			end
+			if dir == "/tmp/project/dir/app" then
+				return {
+					{ path = "/tmp/project/dir/app/models", name = "models", type = "directory" },
+					{ path = "/tmp/project/dir/app/main.lua", name = "main.lua", type = "file" },
+				}
+			end
+			if dir == "/tmp/project/dir/app/models" then
+				return {
+					{ path = "/tmp/project/dir/app/models/user.lua", name = "user.lua", type = "file" },
+				}
+			end
+			return {}
+		end
+		editor_diff = function()
+			return {}
+		end
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+
+		keymaps["<leader>o"].rhs()
+
+		assert.is_true(last_render_expanded["/tmp/project/dir"])
+		assert.is_true(last_render_expanded["/tmp/project/dir/app"])
+		assert.is_true(last_render_expanded["/tmp/project/dir/app/models"])
+	end)
+
+	it("collapses the parent directory for a file cursor and focuses the parent", function()
+		rendered_entries = {
+			{ id = "/tmp/project/dir", path = "/tmp/project/dir", name = "dir", type = "directory" },
+			{
+				id = "/tmp/project/dir/file.lua",
+				path = "/tmp/project/dir/file.lua",
+				name = "file.lua",
+				type = "file",
+				depth = 1,
+			},
+		}
+		package.loaded["etoile.scanner"].list_dir = function(dir)
+			if dir == "/tmp/project/dir" then
+				return {
+					{ path = "/tmp/project/dir/file.lua", name = "file.lua", type = "file" },
+				}
+			end
+			return {}
+		end
+		editor_diff = function()
+			return {}
+		end
+		open_etoile()
+		current_entry = { path = "/tmp/project/dir", name = "dir", type = "directory" }
+		keymaps["<leader>o"].rhs()
+		current_entry = nil
+		cursor = { 2, 0 }
+
+		keymaps["<leader>c"].rhs()
+
+		assert.is_nil(last_render_expanded["/tmp/project/dir"])
+		assert.are.same({ 1, 0 }, set_cursors[#set_cursors])
+	end)
+
+	it("does nothing when collapsing the parent would target the tree root", function()
+		open_etoile()
+		current_entry = { path = "/tmp/project/file.lua", name = "file.lua", type = "file" }
+		local set_cursor_count = #set_cursors
+
+		keymaps["<leader>c"].rhs()
+
+		assert.are.equal(set_cursor_count, #set_cursors)
 	end)
 
 	it("keeps pending edits when search refreshes the tree", function()
