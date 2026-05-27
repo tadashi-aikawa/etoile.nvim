@@ -47,11 +47,7 @@ local function classify(index, worktree)
 	return nil
 end
 
-local function git_status_output(root, opts)
-	local cmd = { "git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all" }
-	if opts.show_ignored then
-		table.insert(cmd, "--ignored=matching")
-	end
+local function system_output(cmd)
 	if type(vim.system) == "function" then
 		local result = vim.system(cmd, { text = true }):wait()
 		if result.code ~= 0 then
@@ -70,7 +66,27 @@ local function git_status_output(root, opts)
 	return output
 end
 
+local function git_root(root)
+	local output = system_output({ "git", "-C", root, "rev-parse", "--show-toplevel" })
+	if not output or output == "" then
+		return nil
+	end
+	return path.normalize((output:gsub("%s+$", "")))
+end
+
+local function git_status_output(root, opts)
+	local cmd = { "git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=all" }
+	if opts.show_ignored then
+		table.insert(cmd, "--ignored=matching")
+	end
+	return system_output(cmd)
+end
+
 local function add_status(result, full_path, status)
+	if full_path ~= result.root and not path.is_ancestor(result.root, full_path) then
+		return
+	end
+
 	result.by_path[full_path] = merge_status(result.by_path[full_path], status)
 
 	if status == "ignored" then
@@ -90,11 +106,17 @@ end
 function M.collect(root, opts)
 	opts = opts or {}
 	root = path.normalize(root)
-	local output = git_status_output(root, opts)
+	local repo_root = git_root(root)
 	local result = {
 		root = root,
+		git_root = repo_root,
 		by_path = {},
 	}
+	if not repo_root then
+		return result
+	end
+
+	local output = git_status_output(repo_root, opts)
 	if not output or output == "" then
 		return result
 	end
@@ -106,13 +128,13 @@ function M.collect(root, opts)
 		local status = classify(record:sub(1, 1), record:sub(2, 2))
 		local rel = record:sub(4)
 		if status and rel ~= "" then
-			add_status(result, path.join(root, rel), status)
+			add_status(result, path.join(repo_root, rel), status)
 		end
 		if record:sub(1, 1) == "R" or record:sub(1, 1) == "C" then
 			index = index + 1
 			local rel_from = records[index]
 			if status and rel_from and rel_from ~= "" then
-				add_status(result, path.join(root, rel_from), status)
+				add_status(result, path.join(repo_root, rel_from), status)
 			end
 		end
 		index = index + 1

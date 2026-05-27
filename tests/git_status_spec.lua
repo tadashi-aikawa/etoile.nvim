@@ -1,6 +1,6 @@
 local last_cmd
 
-local function reset_vim(output, code)
+local function reset_vim(output, code, repo_root)
 	last_cmd = nil
 	_G.vim = {
 		split = function(value, sep, opts)
@@ -25,8 +25,15 @@ local function reset_vim(output, code)
 		end,
 		system = function(cmd)
 			last_cmd = cmd
+			local is_rev_parse = cmd[#cmd] == "--show-toplevel"
 			return {
 				wait = function()
+					if is_rev_parse then
+						return {
+							code = repo_root == false and 128 or 0,
+							stdout = repo_root == false and "" or ((repo_root or "/tmp/project") .. "\n"),
+						}
+					end
 					return {
 						code = code or 0,
 						stdout = output or "",
@@ -53,6 +60,20 @@ describe("etoile.git_status", function()
 		assert.are.same("added", git_status.status_for(statuses, "/tmp/project/README.md"))
 		assert.are.same("ignored", git_status.status_for(statuses, "/tmp/project/ignored.log"))
 		assert.are.same("--ignored=matching", last_cmd[#last_cmd])
+	end)
+
+	it("collects statuses when the tree root is below the git root", function()
+		reset_vim(" M src/a.lua\0 D src/nested/b.lua\0?? README.md\0", nil, "/tmp/project")
+		local git_status = require("etoile.git_status")
+
+		local statuses = git_status.collect("/tmp/project/src")
+
+		assert.are.same("modified", git_status.status_for(statuses, "/tmp/project/src/a.lua"))
+		assert.are.same("deleted", git_status.status_for(statuses, "/tmp/project/src/nested/b.lua"))
+		assert.are.same("deleted", git_status.status_for(statuses, "/tmp/project/src/nested"))
+		assert.are.same("deleted", git_status.status_for(statuses, "/tmp/project/src"))
+		assert.are.same(nil, git_status.status_for(statuses, "/tmp/project/README.md"))
+		assert.are.same("/tmp/project", statuses.git_root)
 	end)
 
 	it("does not mark staged added files", function()
@@ -97,6 +118,15 @@ describe("etoile.git_status", function()
 
 	it("returns empty statuses when git status fails", function()
 		reset_vim("", 128)
+		local git_status = require("etoile.git_status")
+
+		local statuses = git_status.collect("/tmp/project")
+
+		assert.are.same(nil, git_status.status_for(statuses, "/tmp/project/main.lua"))
+	end)
+
+	it("returns empty statuses when git root cannot be resolved", function()
+		reset_vim("", nil, false)
 		local git_status = require("etoile.git_status")
 
 		local statuses = git_status.collect("/tmp/project")
