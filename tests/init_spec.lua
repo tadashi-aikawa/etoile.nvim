@@ -22,6 +22,7 @@ local notifications
 local editor_diff
 local last_apply_ops
 local apply_result
+local current_buf_name
 
 local function deepcopy(value)
 	if type(value) ~= "table" then
@@ -65,6 +66,7 @@ local function reset_vim()
 	notifications = {}
 	last_apply_ops = nil
 	apply_result = { true, nil }
+	current_buf_name = ""
 	editor_diff = function()
 		return {
 			{ type = "create", path = "/tmp/project/ddd.md", entry_type = "file" },
@@ -102,7 +104,10 @@ local function reset_vim()
 			return result
 		end,
 		fn = {
-			fnamemodify = function(path)
+			fnamemodify = function(path, mods)
+				if mods == ":p:h" then
+					return path:match("^(.*)/[^/]+$") or path
+				end
 				return path
 			end,
 			fnameescape = function(path)
@@ -128,7 +133,7 @@ local function reset_vim()
 				return name
 			end,
 			nvim_buf_get_name = function()
-				return ""
+				return current_buf_name
 			end,
 			nvim_get_current_win = function()
 				return current_win
@@ -221,6 +226,7 @@ local function reset_vim()
 	package.loaded["etoile"] = nil
 	package.loaded["etoile.config"] = nil
 	package.loaded["etoile.help"] = nil
+	package.loaded.oil = nil
 	package.loaded["etoile.editor"] = {
 		snapshot = function(entries)
 			return entries
@@ -427,6 +433,52 @@ describe("etoile", function()
 		assert.are.equal("Collapse etoile parent directory", keymaps.C.opts.desc)
 		assert.is_nil(keymaps["<leader>o"])
 		assert.is_nil(keymaps["<leader>c"])
+	end)
+
+	it("opens the current buffer directory", function()
+		current_buf_name = "/tmp/project/src/main.lua"
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+		})
+
+		etoile.open_current()
+
+		assert.are.equal("/tmp/project/src", last_render_root)
+	end)
+
+	it("opens the current oil directory", function()
+		current_buf_name = "oil:///tmp/project/docs"
+		package.loaded.oil = {
+			get_current_dir = function()
+				return "/tmp/project/docs"
+			end,
+		}
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+		})
+
+		etoile.open_current()
+
+		assert.are.equal("/tmp/project/docs", last_render_root)
+	end)
+
+	it("falls back to cwd when the current buffer has no local path", function()
+		local etoile = require("etoile")
+		etoile.setup({
+			preview = {
+				enabled = false,
+			},
+		})
+
+		etoile.open_current()
+
+		assert.are.equal("/tmp/project", last_render_root)
 	end)
 
 	it("returns focus to the source window when closed", function()

@@ -25,6 +25,32 @@ local function resolve_root(input)
 	return path.normalize(root or vim.fn.getcwd())
 end
 
+local function current_oil_dir()
+	local ok, oil = pcall(require, "oil")
+	if not ok or type(oil.get_current_dir) ~= "function" then
+		return nil
+	end
+
+	local ok_dir, dir = pcall(oil.get_current_dir)
+	if not ok_dir or not dir or dir == "" then
+		return nil
+	end
+	return dir
+end
+
+local function resolve_current_root()
+	local oil_dir = current_oil_dir()
+	if oil_dir then
+		return path.normalize(oil_dir)
+	end
+
+	local current = vim.api.nvim_buf_get_name(0)
+	if current ~= "" then
+		return path.normalize(vim.fn.fnamemodify(current, ":p:h"))
+	end
+	return path.normalize(vim.fn.getcwd())
+end
+
 local function expand_to_current(state)
 	local current = vim.api.nvim_buf_get_name(0)
 	if current == "" then
@@ -983,6 +1009,10 @@ function M.open(opts)
 	if config.options.preview.enabled then
 		open_preview(state)
 	end
+end
+
+function M.open_current()
+	M.open({ path = resolve_current_root() })
 end
 
 return M

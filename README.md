@@ -91,6 +91,12 @@ Open the tree with an explicit root:
 :Etoile /path/to/project
 ```
 
+Open the tree rooted at the current buffer's directory, or at the current oil.nvim directory:
+
+```vim
+:EtoileCurrent
+```
+
 You can also open it from Lua:
 
 ```lua

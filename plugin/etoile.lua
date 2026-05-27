@@ -10,3 +10,9 @@ end, {
 	complete = "dir",
 	desc = "Open etoile.nvim file tree",
 })
+
+vim.api.nvim_create_user_command("EtoileCurrent", function()
+	require("etoile").open_current()
+end, {
+	desc = "Open etoile.nvim file tree at current buffer directory",
+})

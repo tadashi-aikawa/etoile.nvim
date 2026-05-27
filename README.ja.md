@@ -91,6 +91,12 @@ require("etoile").setup({
 :Etoile /path/to/project
 ```
 
+カレントバッファのディレクトリ、または oil.nvim の現在ディレクトリを root にしてツリーを開く:
+
+```vim
+:EtoileCurrent
+```
+
 Lua から開くこともできる:
 
 ```lua
