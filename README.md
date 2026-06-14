@@ -34,7 +34,11 @@
 
 ## Demo Video
 
-TODO: Add a demo video after it is ready.
+**🎥 Demo movie (YouTube)👇**
+[![YouTube Video 7whmCQuZgS4](https://img.youtube.com/vi/7whmCQuZgS4/maxresdefault.jpg)](https://www.youtube.com/watch?v=7whmCQuZgS4)
+
+**🎥 Demo movie (YouTube)👇**
+[![YouTube Video 7whmCQuZgS4](https://utfs.io/f/nGnSqDveMsqx38VmtlfPgaPcnDmUd2zWXlRrvFsbTkf49w1M)](https://www.youtube.com/watch?v=y4qDuEzcv9g)
 
 ## Setup
 

@@ -34,7 +34,11 @@
 
 ## デモ動画
 
-TODO: 動画が準備できたら追加する。
+**🎥 Demo movie (YouTube)👇**
+[![YouTube Video 7whmCQuZgS4](https://img.youtube.com/vi/7whmCQuZgS4/maxresdefault.jpg)](https://www.youtube.com/watch?v=7whmCQuZgS4)
+
+**🎥 Demo movie (YouTube)👇**
+[![YouTube Video 7whmCQuZgS4](https://utfs.io/f/nGnSqDveMsqx38VmtlfPgaPcnDmUd2zWXlRrvFsbTkf49w1M)](https://www.youtube.com/watch?v=y4qDuEzcv9g)
 
 ## セットアップ
 
